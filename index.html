@@ -61,14 +61,25 @@
   const thangLabel = t => "Tháng " + t.replace("2026-","") + "/2026";
 
   function tinhTon(thangStr) {
+    // Tính tồn đầu: nếu là tháng 2026-03 thì lấy TON_DAU cố định,
+    // còn lại thì lấy tồn cuối của tháng trước
+    function getTonDau(ma, thang) {
+      if (thang === "2026-03") return TON_DAU[ma] ?? 0;
+      const idx = THANG_OPTIONS.indexOf(thang);
+      if (idx <= 0) return TON_DAU[ma] ?? 0;
+      const prevThang = THANG_OPTIONS[idx - 1];
+      const prev = tinhTon(prevThang);
+      return prev[ma]?.tonCuoi ?? 0;
+    }
     const gdArr = Object.values(giaoDich).filter(g => g.thang === thangStr);
     const res = {};
     PARTS.forEach(p => {
+      const tonDau = getTonDau(p.ma, thangStr);
       const gdP   = gdArr.filter(g => g.ma === p.ma);
       const nhap  = gdP.filter(g => g.loai==="nhap").reduce((s,g)=>s+g.soLuong,0);
       const xuat  = gdP.filter(g => g.loai==="xuat").reduce((s,g)=>s+g.soLuong,0);
       const baga  = gdP.filter(g => g.loai==="xuat").reduce((s,g)=>s+(g.giaBan-p.giaChi)*g.soLuong,0);
-      res[p.ma] = { tonDau: TON_DAU[p.ma]??0, nhap, xuat, tonCuoi:(TON_DAU[p.ma]??0)+nhap-xuat, quybaga:baga };
+      res[p.ma] = { tonDau, nhap, xuat, tonCuoi: tonDau+nhap-xuat, quybaga:baga };
     });
     return res;
   }
@@ -162,7 +173,7 @@
           ? `<div class="empty">Chưa có giao dịch nào trong tháng này.</div>`
           : `<div class="card" style="overflow:auto"><table>
               <thead><tr>
-                <th>THỜI GIAN</th><th>LOẠI</th><th>TÊN PHỤ TÙNG</th>
+                <th>THỜI GIAN</th><th>NGƯỜI T.H.</th><th>LOẠI</th><th>TÊN PHỤ TÙNG</th>
                 <th class="r">SL</th><th class="r">GIÁ BÁN</th><th class="r">BAGA</th><th>GHI CHÚ</th><th></th>
               </tr></thead>
               <tbody>
@@ -171,6 +182,7 @@
                   const cl=g.loai==="xuat"?((g.giaBan-(p?.giaChi??0))*g.soLuong):null;
                   return `<tr>
                     <td style="color:#888;font-size:11px">${g.thoiGian}</td>
+                    <td style="color:#c07aff;font-size:12px;font-weight:500">${g.nguoiThucHien||"—"}</td>
                     <td><span class="badge-${g.loai}">${g.loai==="nhap"?"NHẬP":"XUẤT"}</span></td>
                     <td class="thai">${p?.ten??g.ma}</td>
                     <td class="r">${g.soLuong}</td>
@@ -314,6 +326,7 @@
     document.getElementById("m-sl").value="";
     document.getElementById("m-gia").value="";
     document.getElementById("m-ghichu").value="";
+    document.getElementById("m-nv").value="";
     const giaRow = document.getElementById("m-gia-row");
     giaRow.style.display = loai==="xuat"?"block":"none";
     document.getElementById("m-baga-preview").textContent="";
@@ -347,6 +360,8 @@
     const thangGD = document.getElementById("m-thang").value;
     const ton   = tinhTon(thangGD);
 
+    const nv    = document.getElementById("m-nv").value;
+    if (!nv)            return toast("Vui lòng chọn người thực hiện", true);
     if (!ma)            return toast("Vui lòng chọn phụ tùng", true);
     if (!sl||sl<=0)     return toast("Số lượng không hợp lệ", true);
     if (loai==="xuat"){
@@ -358,6 +373,7 @@
     await push(ref(db,"giaodich"), {
       id: Date.now(), loai, ma, soLuong: sl,
       giaBan: loai==="xuat"?gb:null, ghichu, thang: thangGD,
+      nguoiThucHien: nv,
       thoiGian: new Date().toLocaleString("vi-VN")
     });
     btn.disabled=false;
@@ -542,6 +558,7 @@
     </div>
     <input type="hidden" id="m-loai">
     <div class="field"><div class="label">THÁNG</div><select id="m-thang"></select></div>
+    <div class="field"><div class="label">NGƯỜI THỰC HIỆN</div><select id="m-nv"><option value="">-- Chọn nhân viên --</option><option value="Mr. Quốc">Mr. Quốc</option><option value="Mr. Đạt">Mr. Đạt</option><option value="Mr. Cường">Mr. Cường</option><option value="Mr. Bi">Mr. Bi</option></select></div>
     <div class="field"><div class="label">PHỤ TÙNG</div><select id="m-ma"></select></div>
     <div class="field"><div class="label">SỐ LƯỢNG</div><input type="number" id="m-sl" min="1" placeholder="Nhập số lượng..."></div>
     <div class="field" id="m-gia-row">
