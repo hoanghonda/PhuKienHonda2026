@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XNT Phụ Tùng — HEAD Việt Thái Q.2</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- ════════════════════════════════════════════════
+     🔧 CẤU HÌNH FIREBASE — ĐIỀN VÀO ĐÂY
+     Lấy từ: Firebase Console → Project Settings → Your apps
+     ════════════════════════════════════════════════ -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, onValue, push, remove, set, get }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyClCEFqEXoxiv8SEoBMd6Rb6GIcIZxgH3A",
+    authDomain: "phukien2026-a2fe6.firebaseapp.com",
+    databaseURL: "https://phukien2026-a2fe6-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "phukien2026-a2fe6",
+    storageBucket: "phukien2026-a2fe6.firebasestorage.app",
+    messagingSenderId: "1016615175099",
+    appId: "1:1016615175099:web:10ae58fc95a11e0fe83a9e"
+  };
+
+  // ── Khởi tạo Firebase ──────────────────────────
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+
+  // ── Dữ liệu cố định ────────────────────────────
+  const PARTS = [
+    // ── Thảm chân ─────────────────────────────────
+    { ten: "Thảm AB Inox",             ma: "HLSACK3AGFLP02", giaChi: 140000  },
+    { ten: "Thảm SH Mode thường",      ma: "HLSACK1NAFLP02", giaChi: 72000  },
+    { ten: "Thảm SH Mode Inox",        ma: "HLSACK1NAFLP03", giaChi: 140000 },
+    { ten: "Thảm Vision thường",       ma: "HLSACK2CAFLP03", giaChi: 72000  },
+    { ten: "Thảm LEAD thường",         ma: "HLSACK2TAFLP01", giaChi: 72000  },
+    { ten: "Thảm SH Lớn Cao cấp Inox",ma: "HLSACK0RPFLP02", giaChi: 140000 },
+    // ── Mũ Bảo Hiểm ───────────────────────────────
+    { ten: "MBH NEX 70 Full Face XXL Đen",          ma: "08FHJCN7BLXXL",  giaChi: 981000  },
+    { ten: "MBH Winner X Full Face XL Đen Đỏ",      ma: "08FUFHJCRBXL",   giaChi: 1151000 },
+    { ten: "MBH NEX 30 M Đen",                       ma: "08OHJCN3BLM",    giaChi: 598000  },
+    { ten: "MBH NEX 30 M Trắng",                     ma: "08OHJCN3WHM",    giaChi: 598000  },
+    { ten: "MBH Jet Cao Cấp 3/4 XL Be",              ma: "08JEMROYBEIXL",  giaChi: 369000  },
+    { ten: "MBH Jet Cao Cấp 3/4 XL Xám",             ma: "08JEMROYGREXL",  giaChi: 369000  },
+    { ten: "MBH Jet Cao Cấp 3/4 XL Đen",             ma: "08JEMROYBLXXL",  giaChi: 369000  },
+    { ten: "MBH Jet Cao Cấp 3/4 XL Đen Xám",         ma: "08JEMROYGRBXL",  giaChi: 402000  },
+    { ten: "MBH Jet Cao Cấp 3/4 XL Đen Hồng",        ma: "08JEMROYPIBXL",  giaChi: 402000  },
+    { ten: "MBH Jet Cao Cấp 3/4 L Be",               ma: "08JEMROYBEIL",   giaChi: 369000  },
+    { ten: "MBH Jet Fashion L Đen",                   ma: "08JEFROYBLKL",   giaChi: 285000  },
+    { ten: "MBH Jet Fashion XL Đen",                  ma: "08JEFROYBLKXL",  giaChi: 285000  },
+    { ten: "MBH Hiway Không Kính XL Be",              ma: "08HIWPROBEIXLP", giaChi: 114000  },
+    { ten: "MBH Hiway Có Kính 2/4 XL Trắng",         ma: "08HIKPROWHIXL",  giaChi: 164000  },
+    { ten: "MBH Hiway Có Kính 2/4 L Trắng",          ma: "08HIKPROWHIL",   giaChi: 164000  },
+    { ten: "MBH Hiway Có Kính 2/4 XL Đen",           ma: "08HIKPROBLKXL",  giaChi: 164000  },
+    { ten: "MBH Hiway Có Kính 2/4 L Đen",            ma: "08HIKPROBLKL",   giaChi: 164000  },
+    { ten: "MBH Hiway Có Kính 2/4 XL Be",            ma: "08HIKPROBEIXL",  giaChi: 164000  },
+    { ten: "MBH Hiway Có Kính 2/4 XL Xanh",          ma: "08HIKPRONBLXL",  giaChi: 164000  },
+    { ten: "MBH Hiway Có Kính 2/4 L Xanh",           ma: "08HIKPRONBLL",   giaChi: 164000  },
+  ];
+
+  const TON_DAU = {
+    // Thảm chân
+    HLSACK3AGFLP02: 10, HLSACK1NAFLP02: 11, HLSACK1NAFLP03: 4,
+    HLSACK2CAFLP03: 30, HLSACK2TAFLP01: 9,  HLSACK0RPFLP02: 13,
+    // Mũ Bảo Hiểm (tồn đầu tháng 03/2026)
+    "08FHJCN7BLXXL": 1,  "08FUFHJCRBXL": 1,
+    "08OHJCN3BLM": 1,    "08OHJCN3WHM": 1,
+    "08JEMROYBEIXL": 2,  "08JEMROYGREXL": 2,  "08JEMROYBLXXL": 2,
+    "08JEMROYGRBXL": 1,  "08JEMROYPIBXL": 1,  "08JEMROYBEIL": 1,
+    "08JEFROYBLKL": 3,   "08JEFROYBLKXL": 5,
+    "08HIWPROBEIXLP": 1,
+    "08HIKPROWHIXL": 2,  "08HIKPROWHIL": 2,
+    "08HIKPROBLKXL": 4,  "08HIKPROBLKL": 1,
+    "08HIKPROBEIXL": 3,  "08HIKPRONBLXL": 1,  "08HIKPRONBLL": 1,
+  };
+
+  const THANG_OPTIONS = [
+    "2026-03","2026-04","2026-05","2026-06",
+    "2026-07","2026-08","2026-09","2026-10","2026-11","2026-12",
+  ];
+
+  // ── State ───────────────────────────────────────
+  let giaoDich  = {}; // Firebase key → object
+  let thanhToan = {};
+  let tab       = "tonkho";
+  let thang     = "2026-03";
+
+  // ── Helpers ─────────────────────────────────────
+  const fmt    = n => new Intl.NumberFormat("vi-VN").format(n) + "đ";
+  const fmtNum = n => new Intl.NumberFormat("vi-VN").format(n);
+  const thangLabel = t => "Tháng " + t.replace("2026-","") + "/2026";
+
+  function tinhTon(thangStr) {
+    // Tính tồn đầu: nếu là tháng 2026-03 thì lấy TON_DAU cố định,
+    // còn lại thì lấy tồn cuối của tháng trước
+    function getTonDau(ma, thang) {
+      if (thang === "2026-03") return TON_DAU[ma] ?? 0;
+      const idx = THANG_OPTIONS.indexOf(thang);
+      if (idx <= 0) return TON_DAU[ma] ?? 0;
+      const prevThang = THANG_OPTIONS[idx - 1];
+      const prev = tinhTon(prevThang);
+      return prev[ma]?.tonCuoi ?? 0;
+    }
+    const gdArr = Object.values(giaoDich).filter(g => g.thang === thangStr);
+    const res = {};
+    PARTS.forEach(p => {
+      const tonDau = getTonDau(p.ma, thangStr);
+      const gdP   = gdArr.filter(g => g.ma === p.ma);
+      const nhap  = gdP.filter(g => g.loai==="nhap").reduce((s,g)=>s+g.soLuong,0);
+      const xuat  = gdP.filter(g => g.loai==="xuat").reduce((s,g)=>s+g.soLuong,0);
+      const baga  = gdP.filter(g => g.loai==="xuat").reduce((s,g)=>s+(g.giaBan-p.giaChi)*g.soLuong,0);
+      res[p.ma] = { tonDau, nhap, xuat, tonCuoi: tonDau+nhap-xuat, quybaga:baga };
+    });
+    return res;
+  }
+
+  // ── Toast ────────────────────────────────────────
+  function toast(msg, err=false) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.className = "toast" + (err?" err":"");
+    el.style.display = "block";
+    setTimeout(()=>{ el.style.display="none"; }, 2500);
+  }
+
+  // ── Render ───────────────────────────────────────
+  function render() {
+    const ton = tinhTon(thang);
+    const gdArr = Object.entries(giaoDich)
+      .map(([k,v])=>({...v,_key:k}))
+      .filter(g=>g.thang===thang)
+      .sort((a,b)=>b.id-a.id);
+    const ttArr = Object.entries(thanhToan)
+      .map(([k,v])=>({...v,_key:k}))
+      .filter(t=>t.thang===thang)
+      .sort((a,b)=>b.id-a.id);
+    const tongBaga = Object.values(ton).reduce((s,d)=>s+d.quybaga,0);
+
+    // Thang selector options
+    document.getElementById("thang-select").innerHTML = THANG_OPTIONS
+      .map(t=>`<option value="${t}"${t===thang?" selected":""}>${thangLabel(t)}</option>`).join("");
+
+    // Active tab
+    document.querySelectorAll(".tab-btn").forEach(b=>{
+      b.classList.toggle("active", b.dataset.tab===tab);
+    });
+
+    // Content
+    const content = document.getElementById("content");
+
+    // ── TỒN KHO ─────────────────────────────────
+    if (tab === "tonkho") {
+      content.innerHTML = `
+        <div class="row-between" style="margin-bottom:16px">
+          <span style="color:#888;font-size:12px">Xuất nhập tồn — ${thangLabel(thang)}</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-green" onclick="openModal('nhap')">+ NHẬP HÀNG</button>
+            <button class="btn btn-orange" onclick="openModal('xuat')">− XUẤT BÁN</button>
+          </div>
+        </div>
+        <div class="card" style="overflow:auto">
+          <table>
+            <thead><tr>
+              <th>TÊN PHỤ TÙNG</th><th>MÃ</th>
+              <th class="r">GIÁ VỐN</th><th class="r">TỒN ĐẦU</th>
+              <th class="r">NHẬP</th><th class="r">XUẤT</th><th class="r">TỒN CUỐI</th>
+              <th class="r">THAO TÁC</th>
+            </tr></thead>
+            <tbody>
+              ${PARTS.map(p=>{
+                const d=ton[p.ma]||{};
+                const low=d.tonCuoi<=3;
+                return `<tr class="${low?"ton-low":""}">
+                  <td class="thai">${p.ten}${low?'<span class="badge-low">SẮP HẾT</span>':''}</td>
+                  <td style="color:#888;font-size:11px">${p.ma}</td>
+                  <td class="r" style="color:#aaa">${fmtNum(p.giaChi)}</td>
+                  <td class="r">${d.tonDau??0}</td>
+                  <td class="r" style="color:#4ecb7a">${d.nhap>0?"+"+d.nhap:"—"}</td>
+                  <td class="r" style="color:#e05c2a">${d.xuat>0?"-"+d.xuat:"—"}</td>
+                  <td class="r" style="font-weight:600;color:${low?"#e05c2a":"#e8e2d4"}">${d.tonCuoi??0}</td>
+                  <td class="r">
+                    <button class="btn btn-green" style="padding:4px 10px;font-size:11px" onclick="openModal('nhap','${p.ma}')">Nhập</button>
+                    <button class="btn btn-orange" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="openModal('xuat','${p.ma}')">Xuất</button>
+                  </td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    // ── LỊCH SỬ ─────────────────────────────────
+    else if (tab === "lichtsu") {
+      content.innerHTML = `
+        <div class="row-between" style="margin-bottom:16px">
+          <span style="color:#888;font-size:12px">${gdArr.length} giao dịch — ${thangLabel(thang)}</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-green" onclick="openModal('nhap')">+ NHẬP HÀNG</button>
+            <button class="btn btn-orange" onclick="openModal('xuat')">− XUẤT BÁN</button>
+          </div>
+        </div>
+        ${gdArr.length===0
+          ? `<div class="empty">Chưa có giao dịch nào trong tháng này.</div>`
+          : `<div class="card" style="overflow:auto"><table>
+              <thead><tr>
+                <th>THỜI GIAN</th><th>NGƯỜI T.H.</th><th>LOẠI</th><th>TÊN PHỤ TÙNG</th>
+                <th class="r">SL</th><th class="r">GIÁ BÁN</th><th class="r">BAGA</th><th>GHI CHÚ</th><th></th>
+              </tr></thead>
+              <tbody>
+                ${gdArr.map(g=>{
+                  const p=PARTS.find(x=>x.ma===g.ma);
+                  const cl=g.loai==="xuat"?((g.giaBan-(p?.giaChi??0))*g.soLuong):null;
+                  return `<tr>
+                    <td style="color:#888;font-size:11px">${g.thoiGian}</td>
+                    <td style="color:#c07aff;font-size:12px;font-weight:500">${g.nguoiThucHien||"—"}</td>
+                    <td><span class="badge-${g.loai}">${g.loai==="nhap"?"NHẬP":"XUẤT"}</span></td>
+                    <td class="thai">${p?.ten??g.ma}</td>
+                    <td class="r">${g.soLuong}</td>
+                    <td class="r" style="color:#aaa">${g.giaBan?fmtNum(g.giaBan):"—"}</td>
+                    <td class="r" style="color:${cl>0?"#4ecb7a":"#888"}">${cl!==null?fmtNum(cl)+"đ":"—"}</td>
+                    <td style="color:#888;font-size:12px">${g.ghichu||"—"}</td>
+                    <td><button class="btn btn-red" onclick="xoaGD('${g._key}')">✕</button></td>
+                  </tr>`;
+                }).join("")}
+              </tbody>
+            </table></div>`}`;
+    }
+
+    // ── QUỸ BAGA ─────────────────────────────────
+    else if (tab === "quybaga") {
+      content.innerHTML = `
+        <div style="background:#1e2a1e;border:1px solid #2a4a2a;border-radius:8px;padding:20px 24px;margin-bottom:20px">
+          <div style="color:#888;font-size:11px;margin-bottom:6px;letter-spacing:.08em">TỔNG QUỸ BAGA — ${thangLabel(thang)}</div>
+          <div style="font-size:28px;font-weight:600;color:#4ecb7a">${fmt(tongBaga)}</div>
+          <div style="color:#888;font-size:11px;margin-top:4px">= Tổng (Giá bán − Giá vốn) × Số lượng xuất</div>
+        </div>
+        <div class="card" style="overflow:auto"><table>
+          <thead><tr>
+            <th>TÊN PHỤ TÙNG</th><th class="r">TỔNG XUẤT</th><th class="r">GIÁ VỐN</th><th class="r">QUỸ BAGA</th>
+          </tr></thead>
+          <tbody>
+            ${PARTS.map(p=>{
+              const d=ton[p.ma]||{};
+              const gx=Object.values(giaoDich).filter(g=>g.thang===thang&&g.ma===p.ma&&g.loai==="xuat");
+              return `<tr>
+                <td class="thai">${p.ten}</td>
+                <td class="r" style="color:#aaa;font-size:11px">${gx.length>0?gx.map(g=>`${g.soLuong}×${fmtNum(g.giaBan)}`).join(", "):"—"}</td>
+                <td class="r" style="color:#888">${fmtNum(p.giaChi)}</td>
+                <td class="r" style="font-weight:600;color:${d.quybaga>0?"#4ecb7a":"#555"}">${d.quybaga>0?fmt(d.quybaga):"—"}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+          <tfoot><tr>
+            <td colspan="3" class="r" style="font-weight:600;color:#888;font-size:12px">TỔNG CỘNG</td>
+            <td class="r" style="font-weight:600;color:#4ecb7a;font-size:15px">${fmt(tongBaga)}</td>
+          </tr></tfoot>
+        </table></div>`;
+    }
+
+    // ── QUỸ VỐN ──────────────────────────────────
+    else if (tab === "vonno") {
+      const tongVon = PARTS.reduce((s,p)=>{
+        const gx=Object.values(giaoDich).filter(g=>g.thang===thang&&g.ma===p.ma&&g.loai==="xuat");
+        return s+gx.reduce((ss,g)=>ss+p.giaChi*g.soLuong,0);
+      },0);
+      const tongDaNop = ttArr.reduce((s,t)=>s+t.soTien,0);
+      const conLai = tongVon - tongDaNop;
+
+      content.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:20px">
+          <div class="stat-card purple">
+            <div class="stat-label">VỐN THU VỀ ${thangLabel(thang).toUpperCase()}</div>
+            <div class="stat-val purple-c">${fmt(tongVon)}</div>
+            <div class="stat-sub">= Giá vốn × Số lượng đã bán</div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-label">ĐÃ NỘP QUỸ VỐN</div>
+            <div class="stat-val green-c">${fmt(tongDaNop)}</div>
+            <div class="stat-sub">${thangLabel(thang)}</div>
+          </div>
+          <div class="stat-card ${conLai>0?"red":"green"}">
+            <div class="stat-label">CÒN PHẢI NỘP</div>
+            <div class="stat-val ${conLai>0?"red-c":"green-c"}">${fmt(Math.max(0,conLai))}</div>
+            <div class="stat-sub">${conLai<=0?"✓ Đã nộp đủ":"Vốn thu về − Đã nộp"}</div>
+          </div>
+        </div>
+
+        <div class="card" style="overflow:auto;margin-bottom:20px">
+          <div style="padding:10px 14px;border-bottom:1px solid #2a2d3a;font-size:11px;color:#888;letter-spacing:.06em">
+            VỐN THU VỀ THEO TỪNG MÃ — ${thangLabel(thang).toUpperCase()}
+          </div>
+          <table>
+            <thead><tr>
+              <th>TÊN PHỤ TÙNG</th><th class="r">SL BÁN</th>
+              <th class="r">GIÁ VỐN/CÁI</th><th class="r">VỐN THU VỀ</th><th class="r">QUỸ BAGA</th>
+            </tr></thead>
+            <tbody>
+              ${PARTS.map(p=>{
+                const gx=Object.values(giaoDich).filter(g=>g.thang===thang&&g.ma===p.ma&&g.loai==="xuat");
+                const sl=gx.reduce((s,g)=>s+g.soLuong,0);
+                const von=sl*p.giaChi;
+                const baga=gx.reduce((s,g)=>s+(g.giaBan-p.giaChi)*g.soLuong,0);
+                return `<tr style="opacity:${sl===0?0.45:1}">
+                  <td class="thai">${p.ten}</td>
+                  <td class="r">${sl>0?sl:"—"}</td>
+                  <td class="r" style="color:#888">${fmtNum(p.giaChi)}</td>
+                  <td class="r" style="font-weight:${sl>0?600:400};color:${sl>0?"#c07aff":"#555"}">${sl>0?fmt(von):"—"}</td>
+                  <td class="r" style="color:${baga>0?"#4ecb7a":"#555"}">${baga>0?fmt(baga):"—"}</td>
+                </tr>`;
+              }).join("")}
+            </tbody>
+            <tfoot><tr>
+              <td colspan="3" class="r" style="font-weight:600;color:#888;font-size:12px">TỔNG CỘNG</td>
+              <td class="r" style="font-weight:600;color:#c07aff;font-size:15px">${fmt(tongVon)}</td>
+              <td class="r" style="font-weight:600;color:#4ecb7a;font-size:15px">${fmt(tongBaga)}</td>
+            </tr></tfoot>
+          </table>
+        </div>
+
+        <div class="row-between" style="margin-bottom:10px">
+          <span style="color:#888;font-size:12px">Lịch sử nộp quỹ vốn ${thangLabel(thang)}</span>
+          <button class="btn btn-green" onclick="openModalTT()">+ GHI NỘP QUỸ VỐN</button>
+        </div>
+        <div class="card" style="overflow:auto">
+          ${ttArr.length===0
+            ? `<div class="empty">Chưa có lần nộp quỹ vốn nào trong tháng này.</div>`
+            : `<table>
+                <thead><tr><th>THỜI GIAN</th><th class="r">SỐ TIỀN NỘP</th><th>GHI CHÚ</th><th></th></tr></thead>
+                <tbody>
+                  ${ttArr.map(t=>`<tr>
+                    <td style="color:#888;font-size:11px">${t.thoiGian}</td>
+                    <td class="r" style="color:#4ecb7a;font-weight:600">${fmt(t.soTien)}</td>
+                    <td style="color:#888;font-size:12px">${t.ghichu||"—"}</td>
+                    <td><button class="btn btn-red" onclick="xoaTT('${t._key}')">✕</button></td>
+                  </tr>`).join("")}
+                </tbody>
+              </table>`}
+        </div>`;
+    }
+  }
+
+  // ── Modal nhập/xuất ──────────────────────────────
+  window.openModal = function(loai, maDefault="") {
+    const ton = tinhTon(thang);
+    document.getElementById("modal-title-badge").className = loai==="nhap"?"badge-nhap":"badge-xuat";
+    document.getElementById("modal-title-badge").textContent = loai==="nhap"?"NHẬP HÀNG":"XUẤT BÁN";
+    document.getElementById("modal-title-text").textContent = loai==="nhap"?"Honda giao hàng":"Ghi nhận xuất bán";
+
+    const thangSel = document.getElementById("m-thang");
+    thangSel.innerHTML = THANG_OPTIONS.map(t=>`<option value="${t}"${t===thang?" selected":""}>${thangLabel(t)}</option>`).join("");
+
+    const maSel = document.getElementById("m-ma");
+    maSel.innerHTML = `<option value="">-- Chọn phụ tùng --</option>`
+      + PARTS.map(p=>`<option value="${p.ma}"${p.ma===maDefault?" selected":""}>${p.ten}${loai==="xuat"?" (tồn: "+(ton[p.ma]?.tonCuoi??0)+")":""}</option>`).join("");
+
+    document.getElementById("m-sl").value="";
+    document.getElementById("m-gia").value="";
+    document.getElementById("m-ghichu").value="";
+    document.getElementById("m-nv").value="";
+    const giaRow = document.getElementById("m-gia-row");
+    giaRow.style.display = loai==="xuat"?"block":"none";
+    document.getElementById("m-baga-preview").textContent="";
+
+    document.getElementById("m-loai").value = loai;
+    document.getElementById("m-save").className = `btn ${loai==="nhap"?"btn-green":"btn-orange"}`;
+    document.getElementById("m-save").textContent = loai==="nhap"?"✓ LƯU NHẬP":"✓ LƯU XUẤT";
+
+    // Preview baga
+    function updatePreview() {
+      const ma = maSel.value, gb = parseInt(document.getElementById("m-gia").value), sl = parseInt(document.getElementById("m-sl").value)||1;
+      const p = PARTS.find(x=>x.ma===ma);
+      if (p && gb>0) document.getElementById("m-baga-preview").textContent = `→ Quỹ baga: ${fmtNum((gb-p.giaChi)*sl)}đ`;
+      else document.getElementById("m-baga-preview").textContent="";
+    }
+    document.getElementById("m-gia").oninput = updatePreview;
+    document.getElementById("m-sl").oninput   = updatePreview;
+    maSel.onchange = updatePreview;
+
+    document.getElementById("modal").style.display="flex";
+  };
+
+  window.closeModal = function() { document.getElementById("modal").style.display="none"; };
+
+  window.saveGD = async function() {
+    const loai  = document.getElementById("m-loai").value;
+    const ma    = document.getElementById("m-ma").value;
+    const sl    = parseInt(document.getElementById("m-sl").value);
+    const gb    = parseInt(document.getElementById("m-gia").value);
+    const ghichu= document.getElementById("m-ghichu").value.trim();
+    const thangGD = document.getElementById("m-thang").value;
+    const ton   = tinhTon(thangGD);
+
+    const nv    = document.getElementById("m-nv").value;
+    if (!nv)            return toast("Vui lòng chọn người thực hiện", true);
+    if (!ma)            return toast("Vui lòng chọn phụ tùng", true);
+    if (!sl||sl<=0)     return toast("Số lượng không hợp lệ", true);
+    if (loai==="xuat"){
+      if (!gb||gb<=0)   return toast("Vui lòng nhập giá bán", true);
+      if (sl>(ton[ma]?.tonCuoi??0)) return toast(`Tồn kho chỉ còn ${ton[ma]?.tonCuoi??0} cái`, true);
+    }
+    const btn = document.getElementById("m-save");
+    btn.textContent = "Đang lưu..."; btn.disabled = true;
+    await push(ref(db,"giaodich"), {
+      id: Date.now(), loai, ma, soLuong: sl,
+      giaBan: loai==="xuat"?gb:null, ghichu, thang: thangGD,
+      nguoiThucHien: nv,
+      thoiGian: new Date().toLocaleString("vi-VN")
+    });
+    btn.disabled=false;
+    closeModal();
+    toast(loai==="nhap"?"✓ Đã nhập hàng":"✓ Đã ghi xuất bán");
+  };
+
+  window.xoaGD = async function(key) {
+    if (!confirm("Xoá giao dịch này?")) return;
+    await remove(ref(db,"giaodich/"+key));
+    toast("Đã xoá giao dịch");
+  };
+
+  // ── Modal thanh toán ─────────────────────────────
+  window.openModalTT = function() {
+    document.getElementById("tt-thang").innerHTML = THANG_OPTIONS.map(t=>`<option value="${t}"${t===thang?" selected":""}>${thangLabel(t)}</option>`).join("");
+    document.getElementById("tt-sotien").value="";
+    document.getElementById("tt-ghichu").value="";
+    document.getElementById("modal-tt").style.display="flex";
+  };
+
+  window.closeModalTT = function() { document.getElementById("modal-tt").style.display="none"; };
+
+  window.saveTT = async function() {
+    const st = parseInt(document.getElementById("tt-sotien").value);
+    const thangTT = document.getElementById("tt-thang").value;
+    const ghichu  = document.getElementById("tt-ghichu").value.trim();
+    if (!st||st<=0) return toast("Vui lòng nhập số tiền hợp lệ", true);
+    await push(ref(db,"thanhtoan"), {
+      id: Date.now(), soTien: st, ghichu, thang: thangTT,
+      thoiGian: new Date().toLocaleString("vi-VN")
+    });
+    closeModalTT();
+    toast("✓ Đã ghi nộp quỹ vốn");
+  };
+
+  window.xoaTT = async function(key) {
+    if (!confirm("Xoá lần nộp quỹ vốn này?")) return;
+    await remove(ref(db,"thanhtoan/"+key));
+    toast("Đã xoá");
+  };
+
+  // ── Tab / Tháng ──────────────────────────────────
+  window.setTab = function(t) { tab=t; render(); };
+  window.setThang = function(t) { thang=t; render(); };
+
+  // ── Realtime listeners ───────────────────────────
+  let firstLoad = true;
+  onValue(ref(db,"giaodich"), snap => {
+    giaoDich = snap.val() || {};
+    if (firstLoad) {
+      firstLoad = false;
+      document.getElementById("loading").style.display="none";
+    }
+    render();
+  }, err => {
+    document.getElementById("loading").innerHTML = "❌ Lỗi kết nối Firebase: " + err.message;
+  });
+  onValue(ref(db,"thanhtoan"), snap => {
+    thanhToan = snap.val() || {};
+    render();
+  });
+
+  // Fallback: ẩn loading sau 8 giây dù sao
+  setTimeout(() => {
+    document.getElementById("loading").style.display="none";
+    render();
+  }, 8000);
+</script>
+
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f1117;color:#e8e2d4;font-family:'IBM Plex Mono','Courier New',monospace;min-height:100vh}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:#1a1d27}
+  ::-webkit-scrollbar-thumb{background:#e05c2a;border-radius:3px}
+
+  /* Header */
+  .header{background:#161920;border-bottom:1px solid #2a2d3a;padding:14px 24px;display:flex;align-items:center;gap:16px}
+  .header-dot{width:8px;height:8px;background:#e05c2a;border-radius:2px;flex-shrink:0}
+  .header-title{font-size:14px;font-weight:600;letter-spacing:.05em}
+  .header-spacer{flex:1}
+  select{background:#1a1d27;border:1px solid #2a2d3a;color:#e8e2d4;border-radius:4px;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:13px;cursor:pointer}
+  select:focus{outline:none;border-color:#e05c2a}
+
+  /* Tabs */
+  .tabs{background:#161920;border-bottom:1px solid #2a2d3a;padding-left:16px;display:flex}
+  .tab-btn{background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;padding:11px 20px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:#888;transition:all .2s}
+  .tab-btn.active{color:#e05c2a;border-bottom-color:#e05c2a}
+  .tab-btn:hover{color:#e8e2d4}
+
+  /* Content */
+  .content-wrap{padding:20px;max-width:1100px;margin:0 auto}
+
+  /* Buttons */
+  .btn{border:none;cursor:pointer;font-family:'IBM Plex Mono',monospace;border-radius:4px;font-size:13px;padding:9px 18px;font-weight:600;transition:all .15s}
+  .btn-orange{background:#e05c2a;color:#fff}.btn-orange:hover{background:#f06830}
+  .btn-green{background:#2a7a4e;color:#fff}.btn-green:hover{background:#33935f}
+  .btn-ghost{background:transparent;color:#888;border:1px solid #333}.btn-ghost:hover{background:#1a1d27;color:#e8e2d4}
+  .btn-red{background:transparent;color:#cc4444;border:none;font-size:12px;padding:3px 8px;cursor:pointer;font-family:'IBM Plex Mono',monospace}.btn-red:hover{color:#ff5555}
+
+  /* Table */
+  .card{background:#161920;border:1px solid #2a2d3a;border-radius:8px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:#1a1d27;color:#e05c2a;padding:10px 12px;text-align:left;font-weight:600;font-size:11px;letter-spacing:.08em;border-bottom:1px solid #2a2d3a}
+  td{padding:10px 12px;border-bottom:1px solid #1e2130;vertical-align:middle}
+  tr:hover td{background:#151820}
+  tfoot td{background:#1a1d27;border-bottom:none}
+  .r{text-align:right}
+  .thai{font-family:'IBM Plex Sans Thai',sans-serif;font-weight:500}
+  .ton-low td{background:#2a1a1a!important}.ton-low:hover td{background:#321f1f!important}
+
+  /* Badges */
+  .badge-nhap{background:#1a3a2a;color:#4ecb7a;font-size:11px;padding:2px 8px;border-radius:3px}
+  .badge-xuat{background:#3a1a1a;color:#e05c2a;font-size:11px;padding:2px 8px;border-radius:3px}
+  .badge-low{margin-left:6px;font-size:10px;color:#e05c2a;background:#3a1a1a;padding:1px 6px;border-radius:3px}
+
+  /* Stat cards */
+  .stat-card{border-radius:8px;padding:18px 20px}
+  .stat-card.purple{background:#1e1a2a;border:1px solid #3a2d5a}
+  .stat-card.green{background:#1a2a1e;border:1px solid #2a4a2a}
+  .stat-card.red{background:#2a1a1a;border:1px solid #5a2a2a}
+  .stat-label{color:#aaa;font-size:11px;margin-bottom:6px;letter-spacing:.08em}
+  .stat-val{font-size:24px;font-weight:600}
+  .stat-sub{color:#888;font-size:11px;margin-top:4px}
+  .purple-c{color:#c07aff}.green-c{color:#4ecb7a}.red-c{color:#e05c2a}
+
+  /* Misc */
+  .row-between{display:flex;justify-content:space-between;align-items:center}
+  .empty{text-align:center;color:#555;padding:40px;font-size:13px}
+
+  /* Modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(4px)}
+  .modal-box{background:#161920;border:1px solid #2a2d3a;border-radius:10px;padding:28px;width:480px;max-width:95vw}
+  .label{font-size:11px;color:#888;margin-bottom:5px;letter-spacing:.05em}
+  .field{margin-bottom:14px}
+  input[type=text],input[type=number],select{width:100%;background:#1a1d27;border:1px solid #2a2d3a;color:#e8e2d4;border-radius:4px;padding:8px 12px;font-family:'IBM Plex Mono',monospace;font-size:13px}
+  input:focus,select:focus{outline:none;border-color:#e05c2a}
+  .modal-footer{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
+  .baga-preview{margin-top:6px;font-size:11px;color:#4ecb7a;min-height:16px}
+
+  /* Toast */
+  .toast{position:fixed;bottom:24px;right:24px;background:#1a1d27;border:1px solid #333;border-radius:6px;padding:12px 20px;font-size:13px;z-index:200;display:none;animation:fadeIn .2s}
+  .toast.err{border-color:#cc4444;color:#ff6666}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+  /* Loading */
+  #loading{position:fixed;inset:0;background:#0f1117;display:flex;align-items:center;justify-content:center;z-index:999;font-size:13px;color:#888}
+</style>
+</head>
+<body>
+
+<div id="loading">Đang kết nối Firebase...</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-dot"></div>
+  <span class="header-title">XNT PHỤ TÙNG — HEAD VIỆT THÁI Q.2</span>
+  <div class="header-spacer"></div>
+  <select id="thang-select" onchange="setThang(this.value)"></select>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab-btn active" data-tab="tonkho"  onclick="setTab('tonkho')">📦 TỒN KHO</button>
+  <button class="tab-btn"        data-tab="lichtsu" onclick="setTab('lichtsu')">📋 LỊCH SỬ</button>
+  <button class="tab-btn"        data-tab="quybaga" onclick="setTab('quybaga')">💰 QUỸ BAGA</button>
+  <button class="tab-btn"        data-tab="vonno"   onclick="setTab('vonno')">💵 QUỸ VỐN</button>
+</div>
+
+<!-- Content -->
+<div class="content-wrap">
+  <div id="content"></div>
+</div>
+
+<!-- Modal Nhập/Xuất -->
+<div class="overlay" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <div style="margin-bottom:20px;display:flex;align-items:center;gap:10px">
+      <span id="modal-title-badge" style="font-size:12px;padding:3px 10px"></span>
+      <span id="modal-title-text" style="font-size:14px;font-weight:500;color:#e8e2d4"></span>
+    </div>
+    <input type="hidden" id="m-loai">
+    <div class="field"><div class="label">THÁNG</div><select id="m-thang"></select></div>
+    <div class="field"><div class="label">NGƯỜI THỰC HIỆN</div><select id="m-nv"><option value="">-- Chọn nhân viên --</option><option value="Mr. Quốc">Mr. Quốc</option><option value="Mr. Đạt">Mr. Đạt</option><option value="Mr. Cường">Mr. Cường</option><option value="Mr. Bi">Mr. Bi</option><option value="Mr. Quý">Mr. Quý</option><option value="Mr. Duy">Mr. Duy</option><option value="Mr. Thịnh">Mr. Thịnh</option><option value="Ms. Thy">Ms. Thy</option></select></div>
+    <div class="field"><div class="label">PHỤ TÙNG</div><select id="m-ma"></select></div>
+    <div class="field"><div class="label">SỐ LƯỢNG</div><input type="number" id="m-sl" min="1" placeholder="Nhập số lượng..."></div>
+    <div class="field" id="m-gia-row">
+      <div class="label">GIÁ BÁN (đ)</div>
+      <input type="number" id="m-gia" placeholder="Ví dụ: 90000">
+      <div class="baga-preview" id="m-baga-preview"></div>
+    </div>
+    <div class="field"><div class="label">GHI CHÚ (tuỳ chọn)</div><input type="text" id="m-ghichu" placeholder="Tên khách, biển số, v.v..."></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Huỷ</button>
+      <button class="btn" id="m-save" onclick="saveGD()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Nộp Quỹ Vốn -->
+<div class="overlay" id="modal-tt" onclick="if(event.target===this)closeModalTT()">
+  <div class="modal-box">
+    <div style="margin-bottom:20px;font-size:14px;font-weight:500;color:#e8e2d4">💵 Ghi nhận nộp quỹ vốn</div>
+    <div class="field"><div class="label">THÁNG</div><select id="tt-thang"></select></div>
+    <div class="field"><div class="label">SỐ TIỀN NỘP (đ)</div><input type="number" id="tt-sotien" placeholder="Ví dụ: 500000"></div>
+    <div class="field"><div class="label">GHI CHÚ (tuỳ chọn)</div><input type="text" id="tt-ghichu" placeholder="Chuyển khoản / tiền mặt..."></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModalTT()">Huỷ</button>
+      <button class="btn btn-green" onclick="saveTT()">✓ LƯU THANH TOÁN</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+</body>
+</html>
