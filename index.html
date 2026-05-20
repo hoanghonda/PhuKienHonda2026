@@ -87,6 +87,7 @@
   let thanhToan = {};
   let tab       = "tonkho";
   let thang     = "2026-03";
+  let editingKey = null; // key đang sửa (null = thêm mới)
 
   // ── Helpers ─────────────────────────────────────
   const fmt    = n => new Intl.NumberFormat("vi-VN").format(n) + "đ";
@@ -219,10 +220,13 @@
                     <td><span class="badge-${g.loai}">${g.loai==="nhap"?"NHẬP":"XUẤT"}</span></td>
                     <td class="thai">${p?.ten??g.ma}</td>
                     <td class="r">${g.soLuong}</td>
-                    <td class="r" style="color:#aaa">${g.giaBan?fmtNum(g.giaBan):"—"}</td>
+                    <td class="r" style="color:#aaa">${g.giaBan!=null?fmtNum(g.giaBan):"—"}</td>
                     <td class="r" style="color:${cl>0?"#4ecb7a":"#888"}">${cl!==null?fmtNum(cl)+"đ":"—"}</td>
                     <td style="color:#888;font-size:12px">${g.ghichu||"—"}</td>
-                    <td><button class="btn btn-red" onclick="xoaGD('${g._key}')">✕</button></td>
+                    <td style="white-space:nowrap">
+                      <button class="btn btn-edit" onclick="suaGD('${g._key}')" title="Sửa giao dịch">✏</button>
+                      <button class="btn btn-red"  onclick="xoaGD('${g._key}')" title="Xoá giao dịch">✕</button>
+                    </td>
                   </tr>`;
                 }).join("")}
               </tbody>
@@ -342,31 +346,42 @@
     }
   }
 
+  // ── Sửa giao dịch ───────────────────────────────
+  window.suaGD = function(key) {
+    const g = giaoDich[key];
+    if (!g) return;
+    openModal(g.loai, g.ma, key);
+  };
+
   // ── Modal nhập/xuất ──────────────────────────────
-  window.openModal = function(loai, maDefault="") {
+  window.openModal = function(loai, maDefault="", editKey=null) {
+    editingKey = editKey;
+    const editData = editKey ? giaoDich[editKey] : null;
     const ton = tinhTon(thang);
     document.getElementById("modal-title-badge").className = loai==="nhap"?"badge-nhap":"badge-xuat";
     document.getElementById("modal-title-badge").textContent = loai==="nhap"?"NHẬP HÀNG":"XUẤT BÁN";
     document.getElementById("modal-title-text").textContent = loai==="nhap"?"Honda giao hàng":"Ghi nhận xuất bán";
 
     const thangSel = document.getElementById("m-thang");
-    thangSel.innerHTML = THANG_OPTIONS.map(t=>`<option value="${t}"${t===thang?" selected":""}>${thangLabel(t)}</option>`).join("");
+    thangSel.innerHTML = THANG_OPTIONS.map(t=>`<option value="${t}"${t===(editData?.thang||thang)?" selected":""}>${thangLabel(t)}</option>`).join("");
 
     const maSel = document.getElementById("m-ma");
     maSel.innerHTML = `<option value="">-- Chọn phụ tùng --</option>`
-      + PARTS.map(p=>`<option value="${p.ma}"${p.ma===maDefault?" selected":""}>${p.ten}${loai==="xuat"?" (tồn: "+(ton[p.ma]?.tonCuoi??0)+")":""}</option>`).join("");
+      + PARTS.map(p=>`<option value="${p.ma}"${p.ma===(editData?.ma||maDefault)?" selected":""}>${p.ten}${loai==="xuat"?" (tồn: "+(ton[p.ma]?.tonCuoi??0)+")":""}</option>`).join("");
 
-    document.getElementById("m-sl").value="";
-    document.getElementById("m-gia").value="";
-    document.getElementById("m-ghichu").value="";
-    document.getElementById("m-nv").value="";
+    document.getElementById("m-sl").value    = editData?.soLuong ?? "";
+    document.getElementById("m-gia").value   = editData?.giaBan  ?? "";
+    document.getElementById("m-ghichu").value= editData?.ghichu  ?? "";
+    document.getElementById("m-nv").value    = editData?.nguoiThucHien ?? "";
     const giaRow = document.getElementById("m-gia-row");
     giaRow.style.display = loai==="xuat"?"block":"none";
     document.getElementById("m-baga-preview").textContent="";
 
     document.getElementById("m-loai").value = loai;
     document.getElementById("m-save").className = `btn ${loai==="nhap"?"btn-green":"btn-orange"}`;
-    document.getElementById("m-save").textContent = loai==="nhap"?"✓ LƯU NHẬP":"✓ LƯU XUẤT";
+    document.getElementById("m-save").textContent = editKey
+      ? (loai==="nhap"?"✓ CẬP NHẬT NHẬP":"✓ CẬP NHẬT XUẤT")
+      : (loai==="nhap"?"✓ LƯU NHẬP":"✓ LƯU XUẤT");
 
     // Preview baga
     function updatePreview() {
@@ -382,13 +397,14 @@
     document.getElementById("modal").style.display="flex";
   };
 
-  window.closeModal = function() { document.getElementById("modal").style.display="none"; };
+  window.closeModal = function() { document.getElementById("modal").style.display="none"; editingKey=null; };
 
   window.saveGD = async function() {
     const loai  = document.getElementById("m-loai").value;
     const ma    = document.getElementById("m-ma").value;
     const sl    = parseInt(document.getElementById("m-sl").value);
-    const gb    = parseInt(document.getElementById("m-gia").value);
+    const gbRaw = document.getElementById("m-gia").value.trim();
+    const gb    = gbRaw === "" ? NaN : parseInt(gbRaw);
     const ghichu= document.getElementById("m-ghichu").value.trim();
     const thangGD = document.getElementById("m-thang").value;
     const ton   = tinhTon(thangGD);
@@ -398,20 +414,37 @@
     if (!ma)            return toast("Vui lòng chọn phụ tùng", true);
     if (!sl||sl<=0)     return toast("Số lượng không hợp lệ", true);
     if (loai==="xuat"){
-      if (!gb||gb<=0)   return toast("Vui lòng nhập giá bán", true);
+      if (Number.isNaN(gb)||gb<0)   return toast("Vui lòng nhập giá bán hợp lệ (≥ 0)", true);
       if (sl>(ton[ma]?.tonCuoi??0)) return toast(`Tồn kho chỉ còn ${ton[ma]?.tonCuoi??0} cái`, true);
     }
     const btn = document.getElementById("m-save");
     btn.textContent = "Đang lưu..."; btn.disabled = true;
-    await push(ref(db,"giaodich"), {
-      id: Date.now(), loai, ma, soLuong: sl,
-      giaBan: loai==="xuat"?gb:null, ghichu, thang: thangGD,
-      nguoiThucHien: nv,
-      thoiGian: new Date().toLocaleString("vi-VN")
-    });
-    btn.disabled=false;
-    closeModal();
-    toast(loai==="nhap"?"✓ Đã nhập hàng":"✓ Đã ghi xuất bán");
+
+    if (editingKey) {
+      // ── Cập nhật giao dịch hiện có ──
+      const existing = giaoDich[editingKey];
+      await set(ref(db,"giaodich/"+editingKey), {
+        ...existing,
+        ma, soLuong: sl,
+        giaBan: loai==="xuat"?gb:null, ghichu, thang: thangGD,
+        nguoiThucHien: nv,
+      });
+      editingKey = null;
+      btn.disabled=false;
+      closeModal();
+      toast("✓ Đã cập nhật giao dịch");
+    } else {
+      // ── Thêm giao dịch mới ──
+      await push(ref(db,"giaodich"), {
+        id: Date.now(), loai, ma, soLuong: sl,
+        giaBan: loai==="xuat"?gb:null, ghichu, thang: thangGD,
+        nguoiThucHien: nv,
+        thoiGian: new Date().toLocaleString("vi-VN")
+      });
+      btn.disabled=false;
+      closeModal();
+      toast(loai==="nhap"?"✓ Đã nhập hàng":"✓ Đã ghi xuất bán");
+    }
   };
 
   window.xoaGD = async function(key) {
@@ -507,6 +540,7 @@
   .btn-green{background:#2a7a4e;color:#fff}.btn-green:hover{background:#33935f}
   .btn-ghost{background:transparent;color:#888;border:1px solid #333}.btn-ghost:hover{background:#1a1d27;color:#e8e2d4}
   .btn-red{background:transparent;color:#cc4444;border:none;font-size:12px;padding:3px 8px;cursor:pointer;font-family:'IBM Plex Mono',monospace}.btn-red:hover{color:#ff5555}
+  .btn-edit{background:transparent;color:#e0a02a;border:none;font-size:12px;padding:3px 8px;cursor:pointer;font-family:'IBM Plex Mono',monospace}.btn-edit:hover{color:#f4b83a}
 
   /* Table */
   .card{background:#161920;border:1px solid #2a2d3a;border-radius:8px}
