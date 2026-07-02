@@ -38,55 +38,30 @@
     { ten: "Thảm Vision thường",       ma: "HLSACK2CAFLP03", giaChi: 72000  },
     { ten: "Thảm LEAD thường",         ma: "HLSACK2TAFLP01", giaChi: 72000  },
     { ten: "Thảm SH Lớn Cao cấp Inox",ma: "HLSACK0RPFLP02", giaChi: 140000 },
-    // ── Mũ Bảo Hiểm ───────────────────────────────
-    { ten: "MBH NEX 70 Full Face XXL Đen",          ma: "08FHJCN7BLXXL",  giaChi: 981000  },
-    { ten: "MBH Winner X Full Face XL Đen Đỏ",      ma: "08FUFHJCRBXL",   giaChi: 1151000 },
-    { ten: "MBH NEX 30 M Đen",                       ma: "08OHJCN3BLM",    giaChi: 598000  },
-    { ten: "MBH NEX 30 M Trắng",                     ma: "08OHJCN3WHM",    giaChi: 598000  },
-    { ten: "MBH Jet Cao Cấp 3/4 XL Be",              ma: "08JEMROYBEIXL",  giaChi: 369000  },
-    { ten: "MBH Jet Cao Cấp 3/4 XL Xám",             ma: "08JEMROYGREXL",  giaChi: 369000  },
-    { ten: "MBH Jet Cao Cấp 3/4 XL Đen",             ma: "08JEMROYBLXXL",  giaChi: 369000  },
-    { ten: "MBH Jet Cao Cấp 3/4 XL Đen Xám",         ma: "08JEMROYGRBXL",  giaChi: 402000  },
-    { ten: "MBH Jet Cao Cấp 3/4 XL Đen Hồng",        ma: "08JEMROYPIBXL",  giaChi: 402000  },
-    { ten: "MBH Jet Cao Cấp 3/4 L Be",               ma: "08JEMROYBEIL",   giaChi: 369000  },
-    { ten: "MBH Jet Fashion L Đen",                   ma: "08JEFROYBLKL",   giaChi: 285000  },
-    { ten: "MBH Jet Fashion XL Đen",                  ma: "08JEFROYBLKXL",  giaChi: 285000  },
-    { ten: "MBH Hiway Không Kính XL Be",              ma: "08HIWPROBEIXLP", giaChi: 114000  },
-    { ten: "MBH Hiway Có Kính 2/4 XL Trắng",         ma: "08HIKPROWHIXL",  giaChi: 164000  },
-    { ten: "MBH Hiway Có Kính 2/4 L Trắng",          ma: "08HIKPROWHIL",   giaChi: 164000  },
-    { ten: "MBH Hiway Có Kính 2/4 XL Đen",           ma: "08HIKPROBLKXL",  giaChi: 164000  },
-    { ten: "MBH Hiway Có Kính 2/4 L Đen",            ma: "08HIKPROBLKL",   giaChi: 164000  },
-    { ten: "MBH Hiway Có Kính 2/4 XL Be",            ma: "08HIKPROBEIXL",  giaChi: 164000  },
-    { ten: "MBH Hiway Có Kính 2/4 XL Xanh",          ma: "08HIKPRONBLXL",  giaChi: 164000  },
-    { ten: "MBH Hiway Có Kính 2/4 L Xanh",           ma: "08HIKPRONBLL",   giaChi: 164000  },
   ];
 
   const TON_DAU = {
-    // Thảm chân
+    // Thảm chân (tồn đầu tháng 03/2026 — gốc của chuỗi tính tồn)
     HLSACK3AGFLP02: 10, HLSACK1NAFLP03: 11, HLSACK1NAFLP02: 4,
     HLSACK2CAFLP03: 30, HLSACK2TAFLP01: 9,  HLSACK0RPFLP02: 13,
-    // Mũ Bảo Hiểm (tồn đầu tháng 03/2026)
-    "08FHJCN7BLXXL": 1,  "08FUFHJCRBXL": 1,
-    "08OHJCN3BLM": 1,    "08OHJCN3WHM": 1,
-    "08JEMROYBEIXL": 2,  "08JEMROYGREXL": 2,  "08JEMROYBLXXL": 2,
-    "08JEMROYGRBXL": 1,  "08JEMROYPIBXL": 1,  "08JEMROYBEIL": 1,
-    "08JEFROYBLKL": 3,   "08JEFROYBLKXL": 5,
-    "08HIWPROBEIXLP": 1,
-    "08HIKPROWHIXL": 2,  "08HIKPROWHIL": 2,
-    "08HIKPROBLKXL": 4,  "08HIKPROBLKL": 1,
-    "08HIKPROBEIXL": 3,  "08HIKPRONBLXL": 1,  "08HIKPRONBLL": 1,
   };
 
-  const THANG_OPTIONS = [
+  // Chuỗi đầy đủ để tính tồn kế thừa (03→05 vẫn cần tính ngầm
+  // vì giao dịch cũ nằm trong Firebase, nhưng KHÔNG hiển thị trên UI)
+  const THANG_ALL = [
     "2026-03","2026-04","2026-05","2026-06",
     "2026-07","2026-08","2026-09","2026-10","2026-11","2026-12",
+  ];
+  // Các tháng hiển thị cho người dùng chọn
+  const THANG_OPTIONS = [
+    "2026-06","2026-07","2026-08","2026-09","2026-10","2026-11","2026-12",
   ];
 
   // ── State ───────────────────────────────────────
   let giaoDich  = {}; // Firebase key → object
   let thanhToan = {};
   let tab       = "tonkho";
-  let thang     = "2026-03";
+  let thang     = "2026-07";
   let editingKey = null; // key đang sửa (null = thêm mới)
 
   // ── Helpers ─────────────────────────────────────
@@ -94,27 +69,29 @@
   const fmtNum = n => new Intl.NumberFormat("vi-VN").format(n);
   const thangLabel = t => "Tháng " + t.replace("2026-","") + "/2026";
 
+  // Cache kết quả tính tồn theo tháng — xoá khi dữ liệu Firebase thay đổi
+  let tonCache = {};
+
   function tinhTon(thangStr) {
-    // Tính tồn đầu: nếu là tháng 2026-03 thì lấy TON_DAU cố định,
-    // còn lại thì lấy tồn cuối của tháng trước
-    function getTonDau(ma, thang) {
-      if (thang === "2026-03") return TON_DAU[ma] ?? 0;
-      const idx = THANG_OPTIONS.indexOf(thang);
-      if (idx <= 0) return TON_DAU[ma] ?? 0;
-      const prevThang = THANG_OPTIONS[idx - 1];
-      const prev = tinhTon(prevThang);
-      return prev[ma]?.tonCuoi ?? 0;
-    }
+    if (tonCache[thangStr]) return tonCache[thangStr];
+
+    // Tháng đầu chuỗi (2026-03) lấy TON_DAU cố định,
+    // các tháng sau kế thừa tồn cuối tháng trước (tính đúng 1 lần nhờ cache)
+    const idx  = THANG_ALL.indexOf(thangStr);
+    const prev = idx > 0 ? tinhTon(THANG_ALL[idx - 1]) : null;
+
     const gdArr = Object.values(giaoDich).filter(g => g.thang === thangStr);
     const res = {};
     PARTS.forEach(p => {
-      const tonDau = getTonDau(p.ma, thangStr);
+      const tonDau = prev ? (prev[p.ma]?.tonCuoi ?? 0) : (TON_DAU[p.ma] ?? 0);
       const gdP   = gdArr.filter(g => g.ma === p.ma);
       const nhap  = gdP.filter(g => g.loai==="nhap").reduce((s,g)=>s+g.soLuong,0);
       const xuat  = gdP.filter(g => g.loai==="xuat").reduce((s,g)=>s+g.soLuong,0);
       const baga  = gdP.filter(g => g.loai==="xuat").reduce((s,g)=>s+(g.giaBan-p.giaChi)*g.soLuong,0);
       res[p.ma] = { tonDau, nhap, xuat, tonCuoi: tonDau+nhap-xuat, quybaga:baga };
     });
+
+    tonCache[thangStr] = res;
     return res;
   }
 
@@ -490,6 +467,7 @@
   let firstLoad = true;
   onValue(ref(db,"giaodich"), snap => {
     giaoDich = snap.val() || {};
+    tonCache = {}; // dữ liệu đổi → tính lại tồn
     if (firstLoad) {
       firstLoad = false;
       document.getElementById("loading").style.display="none";
