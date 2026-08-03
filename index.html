@@ -64,6 +64,7 @@
   // ── State ───────────────────────────────────────
   let giaoDich  = {}; // Firebase key → object
   let thanhToan = {};
+  let kiemKe    = {}; // tuầnKey ("2026-W32") → biên bản kiểm kê
   let tab       = "tonkho";
   let thang     = "2026-07";
   let editingKey = null; // key đang sửa (null = thêm mới)
@@ -80,7 +81,7 @@
   {
     const q = new URLSearchParams(location.search);
     const qt = q.get("tab"), qm = q.get("thang");
-    if (["tonkho","lichtsu","quybaga","vonno"].includes(qt)) tab = qt;
+    if (["tonkho","lichtsu","quybaga","vonno","kiemke"].includes(qt)) tab = qt;
     if (THANG_OPTIONS.includes(qm)) thang = qm;
   }
   function syncURL() {
@@ -114,6 +115,261 @@
     tonCache[thangStr] = res;
     return res;
   }
+
+  // ══════════════════════════════════════════════════
+  // ── KIỂM KÊ HÀNG TUẦN — sáng thứ 2, hạn chót 10:00 ──
+  // ══════════════════════════════════════════════════
+  const KK_GIO_HAN = 10; // 10:00 sáng thứ 2
+
+  // Thứ 2 của tuần chứa ngày d (00:00)
+  function mondayOf(d) {
+    const t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    t.setDate(t.getDate() - ((t.getDay() + 6) % 7)); // getDay: CN=0 → Mon=0
+    return t;
+  }
+  // Hạn chót kiểm kê của tuần chứa ngày d = 10:00 thứ 2
+  function deadlineOf(d) {
+    const m = mondayOf(d); m.setHours(KK_GIO_HAN, 0, 0, 0); return m;
+  }
+  // Khoá tuần theo chuẩn ISO: "2026-W32"
+  function weekKeyOf(d) {
+    const t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    t.setDate(t.getDate() - ((t.getDay() + 6) % 7) + 3); // thứ 5 của tuần
+    const firstThu = new Date(t.getFullYear(), 0, 4);
+    firstThu.setDate(firstThu.getDate() - ((firstThu.getDay() + 6) % 7) + 3);
+    const w = 1 + Math.round((t - firstThu) / (7 * 86400000));
+    return `${t.getFullYear()}-W${String(w).padStart(2, "0")}`;
+  }
+  const dmy = d => d.toLocaleDateString("vi-VN", { day:"2-digit", month:"2-digit", year:"numeric" });
+  const tuanLabel = key => {
+    const r = kiemKe[key];
+    if (r?.ngayThuHai) { const [y,m,dd] = r.ngayThuHai.split("-"); return `Tuần ${key.split("-W")[1]} (T2 ${dd}/${m})`; }
+    return `Tuần ${key.split("-W")[1]}/${key.split("-W")[0]}`;
+  };
+
+  // Tháng dùng để lấy tồn hệ thống khi kiểm kê = tháng thực tế hôm nay
+  function thangHienTai() {
+    const n = new Date();
+    const s = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;
+    if (THANG_ALL.includes(s)) return s;
+    return THANG_ALL[THANG_ALL.length - 1];
+  }
+
+  // Trạng thái kiểm kê của tuần hiện tại
+  function kkStatus() {
+    const now = new Date();
+    const key = weekKeyOf(now);
+    const han = deadlineOf(now);
+    const rec = kiemKe[key] || null;
+    if (rec) {
+      return { key, han, rec, done: true,
+               dungHan: !!rec.dungHan,
+               text: rec.dungHan ? "✓ ĐÃ KIỂM KÊ — ĐÚNG HẠN" : "✓ ĐÃ KIỂM KÊ — TRỄ HẠN",
+               mau: rec.dungHan ? "green" : "amber" };
+    }
+    if (now < han) {
+      const phut = Math.round((han - now) / 60000);
+      const con = phut >= 1440 ? `còn ${Math.floor(phut/1440)} ngày ${Math.floor((phut%1440)/60)} giờ`
+                : phut >= 60   ? `còn ${Math.floor(phut/60)} giờ ${phut%60} phút`
+                :                `còn ${phut} phút`;
+      const gap = phut <= 180;
+      return { key, han, rec:null, done:false, quaHan:false,
+               text: `⏳ CHƯA KIỂM KÊ TUẦN NÀY — hạn chót 10:00 T2 ${dmy(han)} (${con})`,
+               mau: gap ? "amber" : "blue" };
+    }
+    const treGio = Math.floor((now - han) / 3600000);
+    const tre = treGio >= 24 ? `${Math.floor(treGio/24)} ngày` : `${treGio} giờ`;
+    return { key, han, rec:null, done:false, quaHan:true,
+             text: `⚠ TRỄ HẠN KIỂM KÊ TUẦN NÀY — quá hạn ${tre} (hạn 10:00 T2 ${dmy(han)})`,
+             mau: "red" };
+  }
+
+  // Tổng hợp một biên bản để hiển thị
+  function kkTongHop(rec) {
+    let soMaLech = 0, tongLech = 0, giaTriLech = 0;
+    PARTS.forEach(p => {
+      const it = rec.items?.[p.ma]; if (!it) return;
+      const l = (it.thucTe ?? 0) - (it.heThong ?? 0);
+      if (l !== 0) { soMaLech++; tongLech += l; giaTriLech += l * p.giaChi; }
+    });
+    return { soMaLech, tongLech, giaTriLech };
+  }
+
+  // ── Banner nhắc kiểm kê (hiện trên mọi tab) ──
+  function renderBanner() {
+    const el = document.getElementById("kk-banner");
+    if (!el) return;
+    const st = kkStatus();
+    if (st.done || tab === "kiemke") { el.innerHTML = ""; return; }
+    el.innerHTML = `<div class="kk-banner ${st.mau}">
+        <span>${esc(st.text)}</span>
+        <button class="btn ${st.quaHan?"btn-orange":"btn-green"}" style="padding:6px 14px;font-size:12px"
+                onclick="openModalKK()">KIỂM KÊ NGAY</button>
+      </div>`;
+  }
+
+  // ── Nhắc bằng thông báo hệ thống (khi app đang mở) ──
+  window.batNhacKK = async function() {
+    if (!("Notification" in window)) return toast("Trình duyệt không hỗ trợ thông báo", true);
+    const p = await Notification.requestPermission();
+    if (p === "granted") { localStorage.setItem("kk-notify","1"); toast("✓ Đã bật nhắc kiểm kê"); render(); }
+    else toast("Bạn đã từ chối quyền thông báo", true);
+  };
+  function kiemTraNhac() {
+    renderBanner();
+    if (localStorage.getItem("kk-notify") !== "1") return;
+    if (Notification.permission !== "granted") return;
+    const now = new Date();
+    const st  = kkStatus();
+    if (st.done) return;
+    const isT2 = now.getDay() === 1;
+    // Nhắc vào sáng thứ 2 từ 07:00 đến 10:00, tối đa 1 lần/ngày
+    if (!isT2 || now.getHours() < 7 || now.getHours() >= KK_GIO_HAN) return;
+    const mark = "kk-notified-" + now.toDateString();
+    if (localStorage.getItem(mark)) return;
+    localStorage.setItem(mark, "1");
+    new Notification("Kiểm kê phụ tùng tuần này", {
+      body: "Hạn chót 10:00 sáng nay. Mở XNT Phụ Tùng để kiểm kê.",
+      tag: "kiemke-tuan"
+    });
+  }
+
+  // ── Modal kiểm kê ────────────────────────────────
+  window.openModalKK = function(readonlyKey = null) {
+    const thangKK = thangHienTai();
+    const ton = tinhTon(thangKK);
+    const rec = readonlyKey ? kiemKe[readonlyKey] : null;
+    const st  = kkStatus();
+
+    document.getElementById("kk-title").textContent = rec
+      ? `📋 Biên bản kiểm kê — ${tuanLabel(readonlyKey)}`
+      : `🗓 Kiểm kê tuần — hạn 10:00 T2 ${dmy(st.han)}`;
+    document.getElementById("kk-mode").value = rec ? "view" : "edit";
+    document.getElementById("kk-key").value  = readonlyKey || st.key;
+
+    document.getElementById("kk-nv").value = rec?.nguoiThucHien ?? "";
+    document.getElementById("kk-nv").disabled = !!rec;
+    document.getElementById("kk-ghichu").value = rec?.ghichu ?? "";
+    document.getElementById("kk-ghichu").disabled = !!rec;
+    document.getElementById("kk-dieuchinh").checked = false;
+    document.getElementById("kk-dieuchinh-row").style.display = rec ? "none" : "block";
+    document.getElementById("kk-save").style.display = rec ? "none" : "inline-block";
+    document.getElementById("kk-meta").innerHTML = rec
+      ? `<span style="color:#888;font-size:11px">Thực hiện: ${esc(rec.nguoiThucHien)} — ${esc(rec.thoiGian)}
+         ${rec.dungHan?'<span class="kk-pill green">ĐÚNG HẠN</span>':'<span class="kk-pill amber">TRỄ HẠN</span>'}</span>`
+      : `<span style="color:#888;font-size:11px">Tồn hệ thống lấy theo ${thangLabel(thangKK)} — đếm thực tế rồi nhập vào cột THỰC TẾ.</span>`;
+
+    document.getElementById("kk-rows").innerHTML = PARTS.map(p => {
+      const heThong = rec ? (rec.items?.[p.ma]?.heThong ?? 0) : (ton[p.ma]?.tonCuoi ?? 0);
+      const thucTe  = rec ? (rec.items?.[p.ma]?.thucTe ?? 0) : "";
+      const lech    = rec ? (thucTe - heThong) : 0;
+      return `<tr>
+        <td class="thai">${p.ten}</td>
+        <td class="r" style="color:#aaa">${heThong}</td>
+        <td class="r">${rec
+          ? thucTe
+          : `<input type="number" class="kk-input" data-ma="${p.ma}" data-ht="${heThong}"
+                    min="0" inputmode="numeric" autocomplete="off"
+                    aria-label="Số lượng thực tế ${esc(p.ten)}" oninput="kkTinhLech()">`}</td>
+        <td class="r kk-lech" data-ma="${p.ma}" style="font-weight:600;color:${lech===0?"#555":(lech>0?"#4ecb7a":"#e05c2a")}">
+          ${rec ? (lech===0?"—":(lech>0?"+"+lech:lech)) : "—"}</td>
+      </tr>`;
+    }).join("");
+
+    document.getElementById("kk-tong").textContent = rec
+      ? (() => { const t = kkTongHop(rec); return t.soMaLech===0
+          ? "✓ Khớp hoàn toàn" : `${t.soMaLech} mã lệch — giá trị ${fmt(t.giaTriLech)}`; })()
+      : "Chưa nhập";
+
+    document.getElementById("modal-kk").style.display = "flex";
+    if (!rec) document.getElementById("kk-nv").focus();
+  };
+
+  window.closeModalKK = function() { document.getElementById("modal-kk").style.display = "none"; };
+
+  window.kkTinhLech = function() {
+    let soMa = 0, giaTri = 0;
+    document.querySelectorAll(".kk-input").forEach(inp => {
+      const ma = inp.dataset.ma, ht = parseInt(inp.dataset.ht) || 0;
+      const raw = inp.value.trim();
+      const cell = document.querySelector(`.kk-lech[data-ma="${ma}"]`);
+      if (raw === "") { cell.textContent = "—"; cell.style.color = "#555"; return; }
+      const tt = parseInt(raw); if (Number.isNaN(tt) || tt < 0) { cell.textContent = "?"; cell.style.color="#e05c2a"; return; }
+      const l = tt - ht;
+      cell.textContent = l === 0 ? "0" : (l > 0 ? "+" + l : String(l));
+      cell.style.color = l === 0 ? "#4ecb7a" : (l > 0 ? "#4ecb7a" : "#e05c2a");
+      if (l !== 0) { soMa++; giaTri += l * (PARTS.find(p=>p.ma===ma)?.giaChi ?? 0); }
+    });
+    document.getElementById("kk-tong").textContent = soMa === 0
+      ? "✓ Khớp hoàn toàn" : `${soMa} mã lệch — giá trị ${fmt(giaTri)}`;
+  };
+
+  window.saveKK = async function() {
+    const nv = document.getElementById("kk-nv").value;
+    if (!nv) return toast("Vui lòng chọn người kiểm kê", true);
+
+    const inputs = [...document.querySelectorAll(".kk-input")];
+    const items = {}; let thieu = 0;
+    for (const inp of inputs) {
+      const raw = inp.value.trim();
+      if (raw === "") { thieu++; continue; }
+      const tt = parseInt(raw);
+      if (Number.isNaN(tt) || tt < 0) return toast("Số lượng thực tế không hợp lệ", true);
+      items[inp.dataset.ma] = { heThong: parseInt(inp.dataset.ht) || 0, thucTe: tt };
+    }
+    if (thieu > 0) return toast(`Còn ${thieu} mã chưa đếm — nhập đủ ${PARTS.length} mã`, true);
+
+    const key     = document.getElementById("kk-key").value;
+    const thangKK = thangHienTai();
+    const now     = new Date();
+    const dungHan = now <= deadlineOf(now);
+    const dieuChinh = document.getElementById("kk-dieuchinh").checked;
+
+    if (kiemKe[key] && !confirm("Tuần này đã có biên bản kiểm kê. Ghi đè?")) return;
+
+    const btn = document.getElementById("kk-save");
+    const lbl = btn.textContent; btn.textContent = "Đang lưu…"; btn.disabled = true;
+    try {
+      await set(ref(db, "kiemke/" + key), {
+        tuan: key,
+        ngayThuHai: (m => `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,"0")}-${String(m.getDate()).padStart(2,"0")}`)(mondayOf(now)),
+        thang: thangKK,
+        nguoiThucHien: nv,
+        ghichu: document.getElementById("kk-ghichu").value.trim(),
+        thoiGian: now.toLocaleString("vi-VN"),
+        ts: now.getTime(),
+        dungHan,
+        daDieuChinh: dieuChinh,
+        items
+      });
+
+      if (dieuChinh) {
+        for (const p of PARTS) {
+          const it = items[p.ma]; const l = it.thucTe - it.heThong;
+          if (l === 0) continue;
+          await push(ref(db, "giaodich"), {
+            id: Date.now() + Math.floor(Math.random()*1000),
+            loai: l > 0 ? "nhap" : "xuat",
+            ma: p.ma, soLuong: Math.abs(l),
+            giaBan: l > 0 ? null : p.giaChi,          // lệch thiếu tính theo giá vốn → quỹ baga = 0
+            ghichu: `[KIỂM KÊ ${key}] điều chỉnh ${l>0?"+":""}${l}`,
+            thang: thangKK, nguoiThucHien: nv,
+            thoiGian: now.toLocaleString("vi-VN")
+          });
+        }
+      }
+      closeModalKK();
+      toast(dieuChinh ? "✓ Đã lưu kiểm kê + điều chỉnh tồn" : "✓ Đã lưu biên bản kiểm kê");
+    } catch (e) {
+      toast("Lỗi lưu kiểm kê: " + e.message + ". Kiểm tra mạng rồi thử lại.", true);
+    } finally { btn.disabled = false; btn.textContent = lbl; }
+  };
+
+  window.xoaKK = async function(key) {
+    if (!confirm("Xoá biên bản kiểm kê " + tuanLabel(key) + "?")) return;
+    try { await remove(ref(db, "kiemke/" + key)); toast("Đã xoá biên bản"); }
+    catch (e) { toast("Lỗi xoá: " + e.message, true); }
+  };
 
   // ── Toast ────────────────────────────────────────
   let toastTimer = null;
@@ -343,6 +599,63 @@
               </table>`}
         </div>`;
     }
+
+    // ── KIỂM KÊ TUẦN ─────────────────────────────
+    else if (tab === "kiemke") {
+      const st = kkStatus();
+      const dsTuan = Object.keys(kiemKe).sort().reverse();
+      const notifyOn = localStorage.getItem("kk-notify")==="1" && ("Notification" in window) && Notification.permission==="granted";
+
+      content.innerHTML = `
+        <div class="stat-card ${st.mau==="green"?"green":st.mau==="red"?"red":"amber"}" style="margin-bottom:16px">
+          <div class="stat-label">KIỂM KÊ TUẦN NÀY — ${esc(st.key)}</div>
+          <div class="stat-val" style="font-size:16px;line-height:1.5;color:${
+            st.mau==="green"?"#4ecb7a":st.mau==="red"?"#e05c2a":st.mau==="amber"?"#e0a02a":"#7aa7ff"}">${esc(st.text)}</div>
+          <div class="stat-sub">Lịch cố định: sáng thứ 2 hàng tuần, hoàn tất trước 10:00</div>
+          <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+            <button class="btn ${st.done?"btn-ghost":"btn-green"}" onclick="openModalKK()">
+              ${st.done?"KIỂM KÊ LẠI TUẦN NÀY":"🗓 KIỂM KÊ NGAY"}</button>
+            ${notifyOn
+              ? `<span class="kk-pill green" style="align-self:center">🔔 Đã bật nhắc sáng T2</span>`
+              : `<button class="btn btn-ghost" onclick="batNhacKK()">🔔 BẬT NHẮC SÁNG THỨ 2</button>`}
+          </div>
+        </div>
+
+        <div class="row-between" style="margin-bottom:10px">
+          <span style="color:#888;font-size:12px">Lịch sử kiểm kê — ${dsTuan.length} biên bản</span>
+        </div>
+        <div class="card" style="overflow:auto">
+          ${dsTuan.length===0
+            ? `<div class="empty">Chưa có biên bản kiểm kê nào.</div>`
+            : `<table>
+                <thead><tr>
+                  <th>TUẦN</th><th>THỜI GIAN</th><th>NGƯỜI KIỂM</th><th>TRẠNG THÁI</th>
+                  <th class="r">MÃ LỆCH</th><th class="r">GIÁ TRỊ LỆCH</th><th>GHI CHÚ</th><th></th>
+                </tr></thead>
+                <tbody>
+                  ${dsTuan.map(k=>{
+                    const r=kiemKe[k], t=kkTongHop(r);
+                    return `<tr>
+                      <td style="font-weight:600">${esc(tuanLabel(k))}</td>
+                      <td style="color:#888;font-size:11px">${esc(r.thoiGian)}</td>
+                      <td style="color:#c07aff;font-size:12px;font-weight:500">${esc(r.nguoiThucHien)||"—"}</td>
+                      <td>${r.dungHan?'<span class="kk-pill green">ĐÚNG HẠN</span>':'<span class="kk-pill amber">TRỄ HẠN</span>'}
+                          ${r.daDieuChinh?'<span class="kk-pill blue">ĐÃ ĐIỀU CHỈNH</span>':''}</td>
+                      <td class="r" style="font-weight:600;color:${t.soMaLech===0?"#4ecb7a":"#e0a02a"}">${t.soMaLech===0?"✓ Khớp":t.soMaLech}</td>
+                      <td class="r" style="color:${t.giaTriLech===0?"#555":(t.giaTriLech>0?"#4ecb7a":"#e05c2a")}">${t.giaTriLech===0?"—":fmt(t.giaTriLech)}</td>
+                      <td style="color:#888;font-size:12px">${esc(r.ghichu)||"—"}</td>
+                      <td style="white-space:nowrap">
+                        <button class="btn btn-edit" onclick="openModalKK('${k}')" title="Xem biên bản" aria-label="Xem biên bản kiểm kê">👁</button>
+                        <button class="btn btn-red" onclick="xoaKK('${k}')" title="Xoá biên bản" aria-label="Xoá biên bản kiểm kê">✕</button>
+                      </td>
+                    </tr>`;
+                  }).join("")}
+                </tbody>
+              </table>`}
+        </div>`;
+    }
+
+    renderBanner();
   }
 
   // ── Sửa giao dịch ───────────────────────────────
@@ -509,7 +822,7 @@
 
   // Esc đóng modal
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { closeModal(); closeModalTT(); }
+    if (e.key === "Escape") { closeModal(); closeModalTT(); closeModalKK(); }
   });
 
   // ── Realtime listeners ───────────────────────────
@@ -529,6 +842,15 @@
     thanhToan = snap.val() || {};
     render();
   });
+  onValue(ref(db,"kiemke"), snap => {
+    kiemKe = snap.val() || {};
+    render();
+  });
+
+  // ── Đồng hồ nhắc kiểm kê: kiểm tra mỗi phút ──────
+  kiemTraNhac();
+  setInterval(kiemTraNhac, 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) kiemTraNhac(); });
 
   // Fallback: ẩn loading sau 8 giây dù sao
   setTimeout(() => {
@@ -597,6 +919,22 @@
   .stat-sub{color:#888;font-size:11px;margin-top:4px}
   .purple-c{color:#c07aff}.green-c{color:#4ecb7a}.red-c{color:#e05c2a}
 
+  .stat-card.amber{background:#2a2416;border:1px solid #5a4a2a}
+  .stat-card.blue{background:#161f2a;border:1px solid #2a3f5a}
+
+  /* Kiểm kê */
+  .kk-banner{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;
+             border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;line-height:1.5}
+  .kk-banner.red{background:#2a1a1a;border:1px solid #5a2a2a;color:#e05c2a}
+  .kk-banner.amber{background:#2a2416;border:1px solid #5a4a2a;color:#e0a02a}
+  .kk-banner.blue{background:#161f2a;border:1px solid #2a3f5a;color:#7aa7ff}
+  .kk-banner.green{background:#1a2a1e;border:1px solid #2a4a2a;color:#4ecb7a}
+  .kk-pill{font-size:10px;padding:2px 7px;border-radius:3px;margin-left:6px;white-space:nowrap}
+  .kk-pill.green{background:#1a3a2a;color:#4ecb7a}
+  .kk-pill.amber{background:#2a2416;color:#e0a02a}
+  .kk-pill.blue{background:#161f2a;color:#7aa7ff}
+  .kk-input{width:88px!important;text-align:right;padding:6px 8px!important;min-height:36px}
+
   /* Misc */
   .row-between{display:flex;justify-content:space-between;align-items:center}
   .empty{text-align:center;color:#555;padding:40px;font-size:13px}
@@ -642,10 +980,12 @@
   <button class="tab-btn"        data-tab="lichtsu" onclick="setTab('lichtsu')">📋 LỊCH SỬ</button>
   <button class="tab-btn"        data-tab="quybaga" onclick="setTab('quybaga')">💰 QUỸ BAGA</button>
   <button class="tab-btn"        data-tab="vonno"   onclick="setTab('vonno')">💵 QUỸ VỐN</button>
+  <button class="tab-btn"        data-tab="kiemke"  onclick="setTab('kiemke')">🗓 KIỂM KÊ</button>
 </div>
 
 <!-- Content -->
 <div class="content-wrap">
+  <div id="kk-banner" role="status" aria-live="polite"></div>
   <div id="content"></div>
 </div>
 
@@ -684,6 +1024,44 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModalTT()">Huỷ</button>
       <button class="btn btn-green" onclick="saveTT()">✓ LƯU THANH TOÁN</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Kiểm Kê Tuần -->
+<div class="overlay" id="modal-kk" onclick="if(event.target===this)closeModalKK()">
+  <div class="modal-box" style="width:640px" role="dialog" aria-modal="true" aria-labelledby="kk-title">
+    <div id="kk-title" style="margin-bottom:6px;font-size:14px;font-weight:500;color:#e8e2d4"></div>
+    <div id="kk-meta" style="margin-bottom:18px"></div>
+    <input type="hidden" id="kk-mode"><input type="hidden" id="kk-key">
+    <div class="field"><label class="label" for="kk-nv">NGƯỜI KIỂM KÊ</label>
+      <select id="kk-nv" name="nguoi-kiem-ke">
+        <option value="">— Chọn nhân viên —</option>
+        <option value="Mr. Quốc">Mr. Quốc</option><option value="Mr. Đạt">Mr. Đạt</option>
+        <option value="Mr. Cường">Mr. Cường</option><option value="Mr. Bi">Mr. Bi</option>
+        <option value="Mr. Quý">Mr. Quý</option><option value="Mr. Duy">Mr. Duy</option>
+        <option value="Mr. Thịnh">Mr. Thịnh</option><option value="Ms. Thy">Ms. Thy</option>
+      </select></div>
+    <div class="card" style="overflow:auto;margin-bottom:14px">
+      <table>
+        <thead><tr><th>TÊN PHỤ TÙNG</th><th class="r">HỆ THỐNG</th><th class="r">THỰC TẾ</th><th class="r">LỆCH</th></tr></thead>
+        <tbody id="kk-rows"></tbody>
+        <tfoot><tr><td colspan="3" class="r" style="font-weight:600;color:#888;font-size:12px">KẾT QUẢ</td>
+          <td class="r" id="kk-tong" style="font-weight:600;font-size:12px;color:#e8e2d4;white-space:nowrap"></td></tr></tfoot>
+      </table>
+    </div>
+    <div class="field"><label class="label" for="kk-ghichu">GHI CHÚ (tuỳ chọn)</label>
+      <input type="text" id="kk-ghichu" name="ghi-chu-kk" autocomplete="off" spellcheck="false" placeholder="Nguyên nhân lệch, hàng lỗi…"></div>
+    <div class="field" id="kk-dieuchinh-row">
+      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:12px;color:#aaa">
+        <input type="checkbox" id="kk-dieuchinh" style="width:auto;margin-top:2px;accent-color:#e05c2a">
+        <span>Tự động tạo giao dịch điều chỉnh cho các mã bị lệch<br>
+          <span style="color:#777;font-size:11px">Lệch thừa → ghi NHẬP. Lệch thiếu → ghi XUẤT theo giá vốn (quỹ baga = 0, vốn vẫn phải nộp).</span></span>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModalKK()">Đóng</button>
+      <button class="btn btn-green" id="kk-save" onclick="saveKK()">✓ LƯU BIÊN BẢN KIỂM KÊ</button>
     </div>
   </div>
 </div>
