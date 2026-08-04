@@ -44,11 +44,29 @@
     { ten: "Thảm SH Lớn Cao cấp Inox",ma: "HLSACK0RPFLP02", giaChi: 140000 },
   ];
 
-  const TON_DAU = {
-    // Thảm chân (tồn đầu tháng 03/2026 — gốc của chuỗi tính tồn)
-    HLSACK3AGFLP02: 10, HLSACK1NAFLP03: 11, HLSACK1NAFLP02: 4,
-    HLSACK2CAFLP03: 30, HLSACK2TAFLP01: 9,  HLSACK0RPFLP02: 13,
+  // ── Vị trí lưu kho ──────────────────────────────
+  const VITRI = [
+    { id: "showroom", ten: "Showroom",       icon: "🏪", mau: "#7aa7ff" },
+    { id: "kho",      ten: "Phòng kho HEAD", icon: "📦", mau: "#e0a02a" },
+  ];
+  const VITRI_MAC_DINH = "kho"; // giao dịch cũ chưa có vị trí → tính vào phòng kho
+  const vtOf    = g => VITRI.some(v=>v.id===g.viTri)    ? g.viTri    : VITRI_MAC_DINH;
+  const vtDenOf = g => VITRI.some(v=>v.id===g.viTriDen) ? g.viTriDen : VITRI_MAC_DINH;
+  const vtTen   = id => VITRI.find(v=>v.id===id)?.ten  ?? id;
+  const vtIcon  = id => VITRI.find(v=>v.id===id)?.icon ?? "";
+
+  // Tồn đầu tháng 03/2026 theo vị trí — gốc của chuỗi tính tồn.
+  // Sửa trực tiếp tại đây nếu muốn tách sẵn một phần sang showroom.
+  const TON_DAU_VT = {
+    HLSACK3AGFLP02: { showroom: 0, kho: 10 },
+    HLSACK1NAFLP03: { showroom: 0, kho: 11 },
+    HLSACK1NAFLP02: { showroom: 0, kho: 4  },
+    HLSACK2CAFLP03: { showroom: 0, kho: 30 },
+    HLSACK2TAFLP01: { showroom: 0, kho: 9  },
+    HLSACK0RPFLP02: { showroom: 0, kho: 13 },
   };
+  const TON_DAU = Object.fromEntries(Object.entries(TON_DAU_VT)
+    .map(([k,v]) => [k, VITRI.reduce((s,x)=>s+(v[x.id]||0),0)]));
 
   // Chuỗi đầy đủ để tính tồn kế thừa (03→05 vẫn cần tính ngầm
   // vì giao dịch cũ nằm trong Firebase, nhưng KHÔNG hiển thị trên UI)
@@ -104,12 +122,24 @@
     const gdArr = Object.values(giaoDich).filter(g => g.thang === thangStr);
     const res = {};
     PARTS.forEach(p => {
-      const tonDau = prev ? (prev[p.ma]?.tonCuoi ?? 0) : (TON_DAU[p.ma] ?? 0);
-      const gdP   = gdArr.filter(g => g.ma === p.ma);
-      const nhap  = gdP.filter(g => g.loai==="nhap").reduce((s,g)=>s+g.soLuong,0);
-      const xuat  = gdP.filter(g => g.loai==="xuat").reduce((s,g)=>s+g.soLuong,0);
-      const baga  = gdP.filter(g => g.loai==="xuat").reduce((s,g)=>s+(g.giaBan-p.giaChi)*g.soLuong,0);
-      res[p.ma] = { tonDau, nhap, xuat, tonCuoi: tonDau+nhap-xuat, quybaga:baga };
+      const gdP = gdArr.filter(g => g.ma === p.ma);
+      const vt  = {};
+      VITRI.forEach(v => {
+        const tonDau = prev ? (prev[p.ma]?.vt?.[v.id]?.tonCuoi ?? 0)
+                            : (TON_DAU_VT[p.ma]?.[v.id] ?? 0);
+        const nhap  = gdP.filter(g=>g.loai==="nhap"  && vtOf(g)===v.id)   .reduce((s,g)=>s+g.soLuong,0);
+        const xuat  = gdP.filter(g=>g.loai==="xuat"  && vtOf(g)===v.id)   .reduce((s,g)=>s+g.soLuong,0);
+        const cRa   = gdP.filter(g=>g.loai==="chuyen"&& vtOf(g)===v.id)   .reduce((s,g)=>s+g.soLuong,0);
+        const cVao  = gdP.filter(g=>g.loai==="chuyen"&& vtDenOf(g)===v.id).reduce((s,g)=>s+g.soLuong,0);
+        vt[v.id] = { tonDau, nhap, xuat, chuyenVao:cVao, chuyenRa:cRa,
+                     tonCuoi: tonDau + nhap - xuat + cVao - cRa };
+      });
+      const sum  = f => VITRI.reduce((s,v)=>s+vt[v.id][f], 0);
+      const baga = gdP.filter(g=>g.loai==="xuat").reduce((s,g)=>s+(g.giaBan-p.giaChi)*g.soLuong,0);
+      res[p.ma] = {
+        tonDau: sum("tonDau"), nhap: sum("nhap"), xuat: sum("xuat"),
+        tonCuoi: sum("tonCuoi"), quybaga: baga, vt
+      };
     });
 
     tonCache[thangStr] = res;
@@ -184,12 +214,22 @@
              mau: "red" };
   }
 
+  // Một dòng biên bản có thể ở định dạng cũ (1 số) hoặc mới (tách theo vị trí)
+  function kkItemTong(it) {
+    if (!it) return { heThong: 0, thucTe: 0 };
+    if (typeof it.heThong === "number") return { heThong: it.heThong, thucTe: it.thucTe ?? 0 };
+    let h = 0, t = 0;
+    VITRI.forEach(v => { h += it[v.id]?.heThong ?? 0; t += it[v.id]?.thucTe ?? 0; });
+    return { heThong: h, thucTe: t };
+  }
+
   // Tổng hợp một biên bản để hiển thị
   function kkTongHop(rec) {
     let soMaLech = 0, tongLech = 0, giaTriLech = 0;
     PARTS.forEach(p => {
       const it = rec.items?.[p.ma]; if (!it) return;
-      const l = (it.thucTe ?? 0) - (it.heThong ?? 0);
+      const { heThong, thucTe } = kkItemTong(it);
+      const l = thucTe - heThong;
       if (l !== 0) { soMaLech++; tongLech += l; giaTriLech += l * p.giaChi; }
     });
     return { soMaLech, tongLech, giaTriLech };
@@ -259,23 +299,39 @@
          ${rec.dungHan?'<span class="kk-pill green">ĐÚNG HẠN</span>':'<span class="kk-pill amber">TRỄ HẠN</span>'}</span>`
       : `<span style="color:#888;font-size:11px">Tồn hệ thống lấy theo ${thangLabel(thangKK)} — đếm thực tế rồi nhập vào cột THỰC TẾ.</span>`;
 
+    document.getElementById("kk-head").innerHTML = `<tr>
+      <th>TÊN PHỤ TÙNG</th>
+      ${VITRI.map(v=>`<th class="r" style="color:${v.mau}">${v.icon} HỆ THỐNG</th>
+                      <th class="r" style="color:${v.mau}">${v.icon} THỰC TẾ</th>`).join("")}
+      <th class="r">LỆCH</th></tr>`;
+
     document.getElementById("kk-rows").innerHTML = PARTS.map(p => {
-      const heThong = rec ? (rec.items?.[p.ma]?.heThong ?? 0) : (ton[p.ma]?.tonCuoi ?? 0);
-      const thucTe  = rec ? (rec.items?.[p.ma]?.thucTe ?? 0) : "";
-      const lech    = rec ? (thucTe - heThong) : 0;
+      const it = rec?.items?.[p.ma];
+      const cu = it && typeof it.heThong === "number"; // biên bản định dạng cũ
+      let lech = 0;
+      const cells = VITRI.map(v => {
+        const heThong = rec
+          ? (cu ? (v.id===VITRI_MAC_DINH ? it.heThong : 0) : (it?.[v.id]?.heThong ?? 0))
+          : (ton[p.ma]?.vt?.[v.id]?.tonCuoi ?? 0);
+        const thucTe = rec
+          ? (cu ? (v.id===VITRI_MAC_DINH ? it.thucTe : 0) : (it?.[v.id]?.thucTe ?? 0))
+          : null;
+        if (rec) lech += thucTe - heThong;
+        return `<td class="r" style="color:#aaa">${heThong}</td>
+          <td class="r">${rec ? thucTe
+            : `<input type="number" class="kk-input" data-ma="${p.ma}" data-vt="${v.id}" data-ht="${heThong}"
+                      min="0" inputmode="numeric" autocomplete="off"
+                      aria-label="Thực tế ${esc(p.ten)} tại ${v.ten}" oninput="kkTinhLech()">`}</td>`;
+      }).join("");
       return `<tr>
         <td class="thai">${p.ten}</td>
-        <td class="r" style="color:#aaa">${heThong}</td>
-        <td class="r">${rec
-          ? thucTe
-          : `<input type="number" class="kk-input" data-ma="${p.ma}" data-ht="${heThong}"
-                    min="0" inputmode="numeric" autocomplete="off"
-                    aria-label="Số lượng thực tế ${esc(p.ten)}" oninput="kkTinhLech()">`}</td>
+        ${cells}
         <td class="r kk-lech" data-ma="${p.ma}" style="font-weight:600;color:${lech===0?"#555":(lech>0?"#4ecb7a":"#e05c2a")}">
           ${rec ? (lech===0?"—":(lech>0?"+"+lech:lech)) : "—"}</td>
       </tr>`;
     }).join("");
 
+    document.getElementById("kk-foot-label").colSpan = 1 + VITRI.length * 2;
     document.getElementById("kk-tong").textContent = rec
       ? (() => { const t = kkTongHop(rec); return t.soMaLech===0
           ? "✓ Khớp hoàn toàn" : `${t.soMaLech} mã lệch — giá trị ${fmt(t.giaTriLech)}`; })()
@@ -289,16 +345,23 @@
 
   window.kkTinhLech = function() {
     let soMa = 0, giaTri = 0;
-    document.querySelectorAll(".kk-input").forEach(inp => {
-      const ma = inp.dataset.ma, ht = parseInt(inp.dataset.ht) || 0;
-      const raw = inp.value.trim();
-      const cell = document.querySelector(`.kk-lech[data-ma="${ma}"]`);
-      if (raw === "") { cell.textContent = "—"; cell.style.color = "#555"; return; }
-      const tt = parseInt(raw); if (Number.isNaN(tt) || tt < 0) { cell.textContent = "?"; cell.style.color="#e05c2a"; return; }
-      const l = tt - ht;
+    PARTS.forEach(p => {
+      const cell = document.querySelector(`.kk-lech[data-ma="${p.ma}"]`);
+      if (!cell) return;
+      const inputs = [...document.querySelectorAll(`.kk-input[data-ma="${p.ma}"]`)];
+      let l = 0, dayDu = true, hopLe = true;
+      inputs.forEach(inp => {
+        const raw = inp.value.trim();
+        if (raw === "") { dayDu = false; return; }
+        const tt = parseInt(raw);
+        if (Number.isNaN(tt) || tt < 0) { hopLe = false; return; }
+        l += tt - (parseInt(inp.dataset.ht) || 0);
+      });
+      if (!hopLe)      { cell.textContent = "?"; cell.style.color = "#e05c2a"; return; }
+      if (!dayDu)      { cell.textContent = "—"; cell.style.color = "#555";    return; }
       cell.textContent = l === 0 ? "0" : (l > 0 ? "+" + l : String(l));
-      cell.style.color = l === 0 ? "#4ecb7a" : (l > 0 ? "#4ecb7a" : "#e05c2a");
-      if (l !== 0) { soMa++; giaTri += l * (PARTS.find(p=>p.ma===ma)?.giaChi ?? 0); }
+      cell.style.color = l >= 0 ? "#4ecb7a" : "#e05c2a";
+      if (l !== 0) { soMa++; giaTri += l * p.giaChi; }
     });
     document.getElementById("kk-tong").textContent = soMa === 0
       ? "✓ Khớp hoàn toàn" : `${soMa} mã lệch — giá trị ${fmt(giaTri)}`;
@@ -315,9 +378,11 @@
       if (raw === "") { thieu++; continue; }
       const tt = parseInt(raw);
       if (Number.isNaN(tt) || tt < 0) return toast("Số lượng thực tế không hợp lệ", true);
-      items[inp.dataset.ma] = { heThong: parseInt(inp.dataset.ht) || 0, thucTe: tt };
+      const ma = inp.dataset.ma;
+      items[ma] = items[ma] || {};
+      items[ma][inp.dataset.vt] = { heThong: parseInt(inp.dataset.ht) || 0, thucTe: tt };
     }
-    if (thieu > 0) return toast(`Còn ${thieu} mã chưa đếm — nhập đủ ${PARTS.length} mã`, true);
+    if (thieu > 0) return toast(`Còn ${thieu} ô chưa đếm — cần đủ ${PARTS.length} mã × ${VITRI.length} vị trí`, true);
 
     const key     = document.getElementById("kk-key").value;
     const thangKK = thangHienTai();
@@ -345,17 +410,21 @@
 
       if (dieuChinh) {
         for (const p of PARTS) {
-          const it = items[p.ma]; const l = it.thucTe - it.heThong;
-          if (l === 0) continue;
-          await push(ref(db, "giaodich"), {
-            id: Date.now() + Math.floor(Math.random()*1000),
-            loai: l > 0 ? "nhap" : "xuat",
-            ma: p.ma, soLuong: Math.abs(l),
-            giaBan: l > 0 ? null : p.giaChi,          // lệch thiếu tính theo giá vốn → quỹ baga = 0
-            ghichu: `[KIỂM KÊ ${key}] điều chỉnh ${l>0?"+":""}${l}`,
-            thang: thangKK, nguoiThucHien: nv,
-            thoiGian: now.toLocaleString("vi-VN")
-          });
+          for (const v of VITRI) {
+            const o = items[p.ma]?.[v.id]; if (!o) continue;
+            const l = o.thucTe - o.heThong;
+            if (l === 0) continue;
+            await push(ref(db, "giaodich"), {
+              id: Date.now() + Math.floor(Math.random()*1000),
+              loai: l > 0 ? "nhap" : "xuat",
+              ma: p.ma, soLuong: Math.abs(l),
+              giaBan: l > 0 ? null : p.giaChi,        // lệch thiếu tính theo giá vốn → quỹ baga = 0
+              viTri: v.id,
+              ghichu: `[KIỂM KÊ ${key}] ${v.ten} điều chỉnh ${l>0?"+":""}${l}`,
+              thang: thangKK, nguoiThucHien: nv,
+              thoiGian: now.toLocaleString("vi-VN")
+            });
+          }
         }
       }
       closeModalKK();
@@ -409,12 +478,31 @@
 
     // ── TỒN KHO ─────────────────────────────────
     if (tab === "tonkho") {
+      const tongVT = {};
+      VITRI.forEach(v => tongVT[v.id] = PARTS.reduce((s,p)=>s+(ton[p.ma]?.vt?.[v.id]?.tonCuoi ?? 0), 0));
+      const tongTatCa = VITRI.reduce((s,v)=>s+tongVT[v.id], 0);
+
       content.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px">
+          ${VITRI.map(v=>`
+            <div class="stat-card vt-${v.id}">
+              <div class="stat-label">${v.icon} ${v.ten.toUpperCase()}</div>
+              <div class="stat-val" style="color:${v.mau}">${fmtNum(tongVT[v.id])} <span style="font-size:13px;color:#888">cái</span></div>
+              <div class="stat-sub">${tongTatCa>0?Math.round(tongVT[v.id]/tongTatCa*100):0}% tổng tồn</div>
+            </div>`).join("")}
+          <div class="stat-card">
+            <div class="stat-label">TỔNG TỒN HIỆN TẠI</div>
+            <div class="stat-val">${fmtNum(tongTatCa)} <span style="font-size:13px;color:#888">cái</span></div>
+            <div class="stat-sub">${thangLabel(thang)} — cập nhật real-time</div>
+          </div>
+        </div>
+
         <div class="row-between" style="margin-bottom:16px">
           <span style="color:#888;font-size:12px">Xuất nhập tồn — ${thangLabel(thang)}</span>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-green" onclick="openModal('nhap')">+ NHẬP HÀNG</button>
             <button class="btn btn-orange" onclick="openModal('xuat')">− XUẤT BÁN</button>
+            <button class="btn btn-ghost" onclick="openModalCV()">⇄ CHUYỂN VỊ TRÍ</button>
           </div>
         </div>
         <div class="card" style="overflow:auto">
@@ -422,8 +510,9 @@
             <thead><tr>
               <th>TÊN PHỤ TÙNG</th><th>MÃ</th>
               <th class="r">GIÁ VỐN</th><th class="r">TỒN ĐẦU</th>
-              <th class="r">NHẬP</th><th class="r">XUẤT</th><th class="r">TỒN CUỐI</th>
-              <th class="r">THAO TÁC</th>
+              <th class="r">NHẬP</th><th class="r">XUẤT</th>
+              ${VITRI.map(v=>`<th class="r" style="color:${v.mau}">${v.icon} ${v.ten.toUpperCase()}</th>`).join("")}
+              <th class="r">TỔNG</th><th class="r">THAO TÁC</th>
             </tr></thead>
             <tbody>
               ${PARTS.map(p=>{
@@ -436,14 +525,24 @@
                   <td class="r">${d.tonDau??0}</td>
                   <td class="r" style="color:#4ecb7a">${d.nhap>0?"+"+d.nhap:"—"}</td>
                   <td class="r" style="color:#e05c2a">${d.xuat>0?"-"+d.xuat:"—"}</td>
+                  ${VITRI.map(v=>{
+                    const n=d.vt?.[v.id]?.tonCuoi ?? 0;
+                    return `<td class="r" style="color:${n>0?v.mau:"#555"};font-weight:${n>0?600:400}">${n}</td>`;
+                  }).join("")}
                   <td class="r" style="font-weight:600;color:${low?"#e05c2a":"#e8e2d4"}">${d.tonCuoi??0}</td>
-                  <td class="r">
+                  <td class="r" style="white-space:nowrap">
                     <button class="btn btn-green" style="padding:4px 10px;font-size:11px" onclick="openModal('nhap','${p.ma}')">Nhập</button>
                     <button class="btn btn-orange" style="padding:4px 10px;font-size:11px;margin-left:4px" onclick="openModal('xuat','${p.ma}')">Xuất</button>
+                    <button class="btn btn-ghost" style="padding:4px 9px;font-size:11px;margin-left:4px" onclick="openModalCV('${p.ma}')" title="Chuyển vị trí">⇄</button>
                   </td>
                 </tr>`;
               }).join("")}
             </tbody>
+            <tfoot><tr>
+              <td colspan="6" class="r" style="font-weight:600;color:#888;font-size:12px">TỔNG TỒN HIỆN TẠI</td>
+              ${VITRI.map(v=>`<td class="r" style="font-weight:600;color:${v.mau}">${fmtNum(tongVT[v.id])}</td>`).join("")}
+              <td class="r" style="font-weight:600;font-size:15px">${fmtNum(tongTatCa)}</td><td></td>
+            </tr></tfoot>
           </table>
         </div>`;
     }
@@ -453,33 +552,39 @@
       content.innerHTML = `
         <div class="row-between" style="margin-bottom:16px">
           <span style="color:#888;font-size:12px">${gdArr.length} giao dịch — ${thangLabel(thang)}</span>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-green" onclick="openModal('nhap')">+ NHẬP HÀNG</button>
             <button class="btn btn-orange" onclick="openModal('xuat')">− XUẤT BÁN</button>
+            <button class="btn btn-ghost" onclick="openModalCV()">⇄ CHUYỂN VỊ TRÍ</button>
           </div>
         </div>
         ${gdArr.length===0
           ? `<div class="empty">Chưa có giao dịch nào trong tháng này.</div>`
           : `<div class="card" style="overflow:auto"><table>
               <thead><tr>
-                <th>THỜI GIAN</th><th>NGƯỜI T.H.</th><th>LOẠI</th><th>TÊN PHỤ TÙNG</th>
+                <th>THỜI GIAN</th><th>NGƯỜI T.H.</th><th>LOẠI</th><th>TÊN PHỤ TÙNG</th><th>VỊ TRÍ</th>
                 <th class="r">SL</th><th class="r">GIÁ BÁN</th><th class="r">BAGA</th><th>GHI CHÚ</th><th></th>
               </tr></thead>
               <tbody>
                 ${gdArr.map(g=>{
                   const p=PARTS.find(x=>x.ma===g.ma);
                   const cl=g.loai==="xuat"?((g.giaBan-(p?.giaChi??0))*g.soLuong):null;
+                  const nhan={nhap:"NHẬP",xuat:"XUẤT",chuyen:"CHUYỂN"}[g.loai]??g.loai.toUpperCase();
+                  const viTriCell = g.loai==="chuyen"
+                    ? `${vtIcon(vtOf(g))} ${vtTen(vtOf(g))} <span style="color:#7aa7ff">→</span> ${vtIcon(vtDenOf(g))} ${vtTen(vtDenOf(g))}`
+                    : `${vtIcon(vtOf(g))} ${vtTen(vtOf(g))}`;
                   return `<tr>
                     <td style="color:#888;font-size:11px">${g.thoiGian}</td>
                     <td style="color:#c07aff;font-size:12px;font-weight:500">${g.nguoiThucHien||"—"}</td>
-                    <td><span class="badge-${g.loai}">${g.loai==="nhap"?"NHẬP":"XUẤT"}</span></td>
+                    <td><span class="badge-${g.loai}">${nhan}</span></td>
                     <td class="thai">${p?.ten??g.ma}</td>
+                    <td style="font-size:11px;color:#aaa;white-space:nowrap">${viTriCell}</td>
                     <td class="r">${g.soLuong}</td>
-                    <td class="r" style="color:#aaa">${g.giaBan!=null?fmtNum(g.giaBan):"—"}</td>
+                    <td class="r" style="color:#aaa">${g.giaBan!=null&&g.loai!=="chuyen"?fmtNum(g.giaBan):"—"}</td>
                     <td class="r" style="color:${cl>0?"#4ecb7a":"#888"}">${cl!==null?fmtNum(cl)+"đ":"—"}</td>
                     <td style="color:#888;font-size:12px">${esc(g.ghichu)||"—"}</td>
                     <td style="white-space:nowrap">
-                      <button class="btn btn-edit" onclick="suaGD('${g._key}')" title="Sửa giao dịch" aria-label="Sửa giao dịch">✏</button>
+                      ${g.loai==="chuyen"?"":`<button class="btn btn-edit" onclick="suaGD('${g._key}')" title="Sửa giao dịch" aria-label="Sửa giao dịch">✏</button>`}
                       <button class="btn btn-red"  onclick="xoaGD('${g._key}')" title="Xoá giao dịch" aria-label="Xoá giao dịch">✕</button>
                     </td>
                   </tr>`;
@@ -677,9 +782,24 @@
     const thangSel = document.getElementById("m-thang");
     thangSel.innerHTML = THANG_OPTIONS.map(t=>`<option value="${t}"${t===(editData?.thang||thang)?" selected":""}>${thangLabel(t)}</option>`).join("");
 
+    // Vị trí: nhập vào đâu / xuất từ đâu
+    const vtSel = document.getElementById("m-vitri");
+    const vtHienTai = editData ? vtOf(editData) : VITRI_MAC_DINH;
+    document.getElementById("m-vitri-label").textContent =
+      loai==="nhap" ? "NHẬP VÀO VỊ TRÍ" : "XUẤT TỪ VỊ TRÍ";
+    vtSel.innerHTML = VITRI.map(v=>`<option value="${v.id}"${v.id===vtHienTai?" selected":""}>${v.icon} ${v.ten}</option>`).join("");
+
     const maSel = document.getElementById("m-ma");
-    maSel.innerHTML = `<option value="">— Chọn phụ tùng —</option>`
-      + PARTS.map(p=>`<option value="${p.ma}"${p.ma===(editData?.ma||maDefault)?" selected":""}>${p.ten}${loai==="xuat"?" (tồn: "+(ton[p.ma]?.tonCuoi??0)+")":""}</option>`).join("");
+    function veDanhSachMa(khoiTao=false) {
+      const vtChon = vtSel.value;
+      const maDangChon = khoiTao ? (editData?.ma || maDefault) : (maSel.value || editData?.ma || maDefault);
+      maSel.innerHTML = `<option value="">— Chọn phụ tùng —</option>`
+        + PARTS.map(p=>{
+            const tonVT = ton[p.ma]?.vt?.[vtChon]?.tonCuoi ?? 0;
+            return `<option value="${p.ma}"${p.ma===maDangChon?" selected":""}>${p.ten}${loai==="xuat"?` (tồn ${vtTen(vtChon)}: ${tonVT})`:""}</option>`;
+          }).join("");
+    }
+    veDanhSachMa(true);
 
     document.getElementById("m-sl").value    = editData?.soLuong ?? "";
     document.getElementById("m-gia").value   = editData?.giaBan  ?? "";
@@ -705,6 +825,7 @@
     document.getElementById("m-gia").oninput = updatePreview;
     document.getElementById("m-sl").oninput   = updatePreview;
     maSel.onchange = updatePreview;
+    vtSel.onchange = () => { veDanhSachMa(); updatePreview(); };
 
     document.getElementById("modal").style.display="flex";
     document.getElementById("m-nv").focus();
@@ -723,21 +844,22 @@
     const ton   = tinhTon(thangGD);
 
     const nv    = document.getElementById("m-nv").value;
+    const viTri = document.getElementById("m-vitri").value;
     if (!nv)            return toast("Vui lòng chọn người thực hiện", true);
     if (!ma)            return toast("Vui lòng chọn phụ tùng", true);
     if (!sl||sl<=0)     return toast("Số lượng không hợp lệ", true);
     if (loai==="xuat"){
       if (Number.isNaN(gb)||gb<0)   return toast("Vui lòng nhập giá bán hợp lệ (≥ 0)", true);
-      // Tồn khả dụng: khi SỬA giao dịch xuất cùng mã + cùng tháng,
-      // phải cộng lại số lượng cũ (vì nó đã bị trừ vào tồn hiện tại)
-      let tonKhaDung = ton[ma]?.tonCuoi ?? 0;
+      // Tồn khả dụng TẠI VỊ TRÍ xuất. Khi SỬA giao dịch xuất cùng mã + cùng tháng
+      // + cùng vị trí, phải cộng lại số lượng cũ (vì nó đã bị trừ vào tồn hiện tại)
+      let tonKhaDung = ton[ma]?.vt?.[viTri]?.tonCuoi ?? 0;
       if (editingKey) {
         const old = giaoDich[editingKey];
-        if (old && old.loai==="xuat" && old.ma===ma && old.thang===thangGD) {
+        if (old && old.loai==="xuat" && old.ma===ma && old.thang===thangGD && vtOf(old)===viTri) {
           tonKhaDung += old.soLuong;
         }
       }
-      if (sl > tonKhaDung) return toast(`Tồn kho chỉ còn ${tonKhaDung} cái`, true);
+      if (sl > tonKhaDung) return toast(`${vtTen(viTri)} chỉ còn ${tonKhaDung} cái`, true);
     }
     const btn = document.getElementById("m-save");
     const btnLabel = btn.textContent;
@@ -751,7 +873,7 @@
           ...existing,
           ma, soLuong: sl,
           giaBan: loai==="xuat"?gb:null, ghichu, thang: thangGD,
-          nguoiThucHien: nv,
+          nguoiThucHien: nv, viTri,
         });
         editingKey = null;
         closeModal();
@@ -761,7 +883,7 @@
         await push(ref(db,"giaodich"), {
           id: Date.now(), loai, ma, soLuong: sl,
           giaBan: loai==="xuat"?gb:null, ghichu, thang: thangGD,
-          nguoiThucHien: nv,
+          nguoiThucHien: nv, viTri,
           thoiGian: new Date().toLocaleString("vi-VN")
         });
         closeModal();
@@ -781,6 +903,77 @@
       await remove(ref(db,"giaodich/"+key));
       toast("Đã xoá giao dịch");
     } catch (e) { toast("Lỗi xoá: " + e.message, true); }
+  };
+
+  // ── Modal chuyển vị trí ──────────────────────────
+  window.openModalCV = function(maDefault="") {
+    document.getElementById("cv-thang").innerHTML = THANG_OPTIONS
+      .map(t=>`<option value="${t}"${t===thang?" selected":""}>${thangLabel(t)}</option>`).join("");
+    document.getElementById("cv-nv").value = "";
+    document.getElementById("cv-sl").value = "";
+    document.getElementById("cv-ghichu").value = "";
+    document.getElementById("cv-tu").innerHTML  = VITRI.map(v=>`<option value="${v.id}"${v.id==="kho"?" selected":""}>${v.icon} ${v.ten}</option>`).join("");
+    document.getElementById("cv-den").innerHTML = VITRI.map(v=>`<option value="${v.id}"${v.id==="showroom"?" selected":""}>${v.icon} ${v.ten}</option>`).join("");
+    cvVeMa(maDefault);
+    document.getElementById("cv-tu").onchange = () => cvVeMa();
+    document.getElementById("cv-thang").onchange = () => cvVeMa();
+    document.getElementById("cv-ma").onchange = cvTonKhaDung;
+    document.getElementById("cv-sl").oninput  = cvTonKhaDung;
+    document.getElementById("modal-cv").style.display = "flex";
+    document.getElementById("cv-nv").focus();
+  };
+  function cvVeMa(maDefault) {
+    const sel = document.getElementById("cv-ma");
+    const giu = maDefault ?? sel.value;
+    const tonCV = tinhTon(document.getElementById("cv-thang").value);
+    const tu = document.getElementById("cv-tu").value;
+    sel.innerHTML = `<option value="">— Chọn phụ tùng —</option>`
+      + PARTS.map(p=>`<option value="${p.ma}"${p.ma===giu?" selected":""}>${p.ten} (tồn ${vtTen(tu)}: ${tonCV[p.ma]?.vt?.[tu]?.tonCuoi ?? 0})</option>`).join("");
+    cvTonKhaDung();
+  }
+  function cvTonKhaDung() {
+    const tonCV = tinhTon(document.getElementById("cv-thang").value);
+    const ma = document.getElementById("cv-ma").value;
+    const tu = document.getElementById("cv-tu").value, den = document.getElementById("cv-den").value;
+    const el = document.getElementById("cv-preview");
+    if (!ma) { el.textContent = ""; return; }
+    const co = tonCV[ma]?.vt?.[tu]?.tonCuoi ?? 0;
+    const sl = parseInt(document.getElementById("cv-sl").value) || 0;
+    el.textContent = tu === den
+      ? "⚠ Vị trí nguồn và đích trùng nhau"
+      : `${vtTen(tu)}: ${co} → ${co-sl}   |   ${vtTen(den)}: ${(tonCV[ma]?.vt?.[den]?.tonCuoi ?? 0)} → ${(tonCV[ma]?.vt?.[den]?.tonCuoi ?? 0)+sl}`;
+    el.style.color = (tu===den || sl>co) ? "#e05c2a" : "#7aa7ff";
+  }
+  window.cvXemTruoc = cvTonKhaDung;
+  window.closeModalCV = function() { document.getElementById("modal-cv").style.display="none"; };
+
+  window.saveCV = async function() {
+    const nv  = document.getElementById("cv-nv").value;
+    const ma  = document.getElementById("cv-ma").value;
+    const sl  = parseInt(document.getElementById("cv-sl").value);
+    const tu  = document.getElementById("cv-tu").value;
+    const den = document.getElementById("cv-den").value;
+    const thangCV = document.getElementById("cv-thang").value;
+    if (!nv)        return toast("Vui lòng chọn người thực hiện", true);
+    if (!ma)        return toast("Vui lòng chọn phụ tùng", true);
+    if (!sl||sl<=0) return toast("Số lượng không hợp lệ", true);
+    if (tu === den) return toast("Vị trí nguồn và đích phải khác nhau", true);
+    const co = tinhTon(thangCV)[ma]?.vt?.[tu]?.tonCuoi ?? 0;
+    if (sl > co)    return toast(`${vtTen(tu)} chỉ còn ${co} cái`, true);
+
+    const btn = document.getElementById("cv-save");
+    const lbl = btn.textContent; btn.textContent = "Đang lưu…"; btn.disabled = true;
+    try {
+      await push(ref(db,"giaodich"), {
+        id: Date.now(), loai: "chuyen", ma, soLuong: sl, giaBan: null,
+        viTri: tu, viTriDen: den, thang: thangCV, nguoiThucHien: nv,
+        ghichu: document.getElementById("cv-ghichu").value.trim(),
+        thoiGian: new Date().toLocaleString("vi-VN")
+      });
+      closeModalCV();
+      toast(`✓ Đã chuyển ${sl} cái: ${vtTen(tu)} → ${vtTen(den)}`);
+    } catch (e) { toast("Lỗi lưu: " + e.message + ". Kiểm tra mạng rồi thử lại.", true); }
+    finally { btn.disabled = false; btn.textContent = lbl; }
   };
 
   // ── Modal thanh toán ─────────────────────────────
@@ -822,7 +1015,7 @@
 
   // Esc đóng modal
   document.addEventListener("keydown", e => {
-    if (e.key === "Escape") { closeModal(); closeModalTT(); closeModalKK(); }
+    if (e.key === "Escape") { closeModal(); closeModalTT(); closeModalKK(); closeModalCV(); }
   });
 
   // ── Realtime listeners ───────────────────────────
@@ -907,6 +1100,7 @@
   /* Badges */
   .badge-nhap{background:#1a3a2a;color:#4ecb7a;font-size:11px;padding:2px 8px;border-radius:3px}
   .badge-xuat{background:#3a1a1a;color:#e05c2a;font-size:11px;padding:2px 8px;border-radius:3px}
+  .badge-chuyen{background:#161f2a;color:#7aa7ff;font-size:11px;padding:2px 8px;border-radius:3px}
   .badge-low{margin-left:6px;font-size:10px;color:#e05c2a;background:#3a1a1a;padding:1px 6px;border-radius:3px}
 
   /* Stat cards */
@@ -919,6 +1113,9 @@
   .stat-sub{color:#888;font-size:11px;margin-top:4px}
   .purple-c{color:#c07aff}.green-c{color:#4ecb7a}.red-c{color:#e05c2a}
 
+  .stat-card{background:#161920;border:1px solid #2a2d3a}
+  .stat-card.vt-showroom{background:#161f2a;border:1px solid #2a3f5a}
+  .stat-card.vt-kho{background:#2a2416;border:1px solid #5a4a2a}
   .stat-card.amber{background:#2a2416;border:1px solid #5a4a2a}
   .stat-card.blue{background:#161f2a;border:1px solid #2a3f5a}
 
@@ -999,6 +1196,7 @@
     <input type="hidden" id="m-loai">
     <div class="field"><label class="label" for="m-thang">THÁNG</label><select id="m-thang" name="thang"></select></div>
     <div class="field"><label class="label" for="m-nv">NGƯỜI THỰC HIỆN</label><select id="m-nv" name="nguoi-thuc-hien"><option value="">— Chọn nhân viên —</option><option value="Mr. Quốc">Mr. Quốc</option><option value="Mr. Đạt">Mr. Đạt</option><option value="Mr. Cường">Mr. Cường</option><option value="Mr. Bi">Mr. Bi</option><option value="Mr. Quý">Mr. Quý</option><option value="Mr. Duy">Mr. Duy</option><option value="Mr. Thịnh">Mr. Thịnh</option><option value="Ms. Thy">Ms. Thy</option></select></div>
+    <div class="field"><label class="label" id="m-vitri-label" for="m-vitri">VỊ TRÍ</label><select id="m-vitri" name="vi-tri"></select></div>
     <div class="field"><label class="label" for="m-ma">PHỤ TÙNG</label><select id="m-ma" name="phu-tung"></select></div>
     <div class="field"><label class="label" for="m-sl">SỐ LƯỢNG</label><input type="number" id="m-sl" name="so-luong" min="1" inputmode="numeric" autocomplete="off" placeholder="Nhập số lượng…"></div>
     <div class="field" id="m-gia-row">
@@ -1028,9 +1226,39 @@
   </div>
 </div>
 
+<!-- Modal Chuyển Vị Trí -->
+<div class="overlay" id="modal-cv" onclick="if(event.target===this)closeModalCV()">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="cv-title">
+    <div id="cv-title" style="margin-bottom:20px;font-size:14px;font-weight:500;color:#e8e2d4">⇄ Chuyển phụ tùng giữa 2 vị trí</div>
+    <div class="field"><label class="label" for="cv-thang">THÁNG</label><select id="cv-thang" name="thang-cv"></select></div>
+    <div class="field"><label class="label" for="cv-nv">NGƯỜI THỰC HIỆN</label>
+      <select id="cv-nv" name="nguoi-thuc-hien-cv">
+        <option value="">— Chọn nhân viên —</option>
+        <option value="Mr. Quốc">Mr. Quốc</option><option value="Mr. Đạt">Mr. Đạt</option>
+        <option value="Mr. Cường">Mr. Cường</option><option value="Mr. Bi">Mr. Bi</option>
+        <option value="Mr. Quý">Mr. Quý</option><option value="Mr. Duy">Mr. Duy</option>
+        <option value="Mr. Thịnh">Mr. Thịnh</option><option value="Ms. Thy">Ms. Thy</option>
+      </select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field"><label class="label" for="cv-tu">TỪ VỊ TRÍ</label><select id="cv-tu" name="tu-vi-tri"></select></div>
+      <div class="field"><label class="label" for="cv-den">ĐẾN VỊ TRÍ</label><select id="cv-den" name="den-vi-tri" onchange="cvXemTruoc()"></select></div>
+    </div>
+    <div class="field"><label class="label" for="cv-ma">PHỤ TÙNG</label><select id="cv-ma" name="phu-tung-cv"></select></div>
+    <div class="field"><label class="label" for="cv-sl">SỐ LƯỢNG CHUYỂN</label>
+      <input type="number" id="cv-sl" name="so-luong-cv" min="1" inputmode="numeric" autocomplete="off" placeholder="Nhập số lượng…">
+      <div class="baga-preview" id="cv-preview" style="color:#7aa7ff" aria-live="polite"></div></div>
+    <div class="field"><label class="label" for="cv-ghichu">GHI CHÚ (tuỳ chọn)</label>
+      <input type="text" id="cv-ghichu" name="ghi-chu-cv" autocomplete="off" spellcheck="false" placeholder="Lý do chuyển, người nhận…"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModalCV()">Huỷ</button>
+      <button class="btn btn-green" id="cv-save" onclick="saveCV()">✓ LƯU CHUYỂN VỊ TRÍ</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Kiểm Kê Tuần -->
 <div class="overlay" id="modal-kk" onclick="if(event.target===this)closeModalKK()">
-  <div class="modal-box" style="width:640px" role="dialog" aria-modal="true" aria-labelledby="kk-title">
+  <div class="modal-box" style="width:780px" role="dialog" aria-modal="true" aria-labelledby="kk-title">
     <div id="kk-title" style="margin-bottom:6px;font-size:14px;font-weight:500;color:#e8e2d4"></div>
     <div id="kk-meta" style="margin-bottom:18px"></div>
     <input type="hidden" id="kk-mode"><input type="hidden" id="kk-key">
@@ -1044,9 +1272,9 @@
       </select></div>
     <div class="card" style="overflow:auto;margin-bottom:14px">
       <table>
-        <thead><tr><th>TÊN PHỤ TÙNG</th><th class="r">HỆ THỐNG</th><th class="r">THỰC TẾ</th><th class="r">LỆCH</th></tr></thead>
+        <thead id="kk-head"></thead>
         <tbody id="kk-rows"></tbody>
-        <tfoot><tr><td colspan="3" class="r" style="font-weight:600;color:#888;font-size:12px">KẾT QUẢ</td>
+        <tfoot><tr><td id="kk-foot-label" colspan="5" class="r" style="font-weight:600;color:#888;font-size:12px">KẾT QUẢ</td>
           <td class="r" id="kk-tong" style="font-weight:600;font-size:12px;color:#e8e2d4;white-space:nowrap"></td></tr></tfoot>
       </table>
     </div>
